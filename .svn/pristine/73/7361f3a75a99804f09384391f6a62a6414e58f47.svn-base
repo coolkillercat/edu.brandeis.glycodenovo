@@ -1,0 +1,724 @@
+package edu.brandeis.glycodenovo.datamodel;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+import org.eurocarbdb.application.glycanbuilder.BuilderWorkspace;
+import org.eurocarbdb.application.glycanbuilder.Glycan;
+import org.eurocarbdb.application.glycanbuilder.GlycanRendererAWT;
+import org.grits.toolbox.core.dataShare.PropertyHandler;
+import org.grits.toolbox.core.datamodel.Entry;
+import org.grits.toolbox.core.datamodel.property.ProjectProperty;
+import org.grits.toolbox.core.datamodel.property.PropertyDataFile;
+import org.grits.toolbox.core.datamodel.util.DataModelSearch;
+import org.grits.toolbox.entry.ms.annotation.glycan.property.MSGlycanAnnotationProperty;
+import org.grits.toolbox.entry.ms.annotation.glycan.property.datamodel.MSGlycanAnnotationMetaData;
+import org.grits.toolbox.entry.ms.annotation.property.MSAnnotationProperty;
+import org.grits.toolbox.entry.ms.annotation.property.datamodel.MSAnnotationFileInfo;
+import org.grits.toolbox.entry.ms.property.datamodel.MSPropertyDataFile;
+import org.grits.toolbox.importer.ms.annotation.glycan.simiansearch.wizard.GeneralInformationMulti;
+import org.grits.toolbox.ms.annotation.gelato.GelatoUtils;
+import org.grits.toolbox.ms.annotation.gelato.glycan.GlycanStructureAnnotation;
+import org.grits.toolbox.ms.annotation.structure.GlycanStructure;
+import org.grits.toolbox.ms.annotation.sugar.GlycanExtraInfo;
+import org.grits.toolbox.ms.file.FileCategory;
+import org.grits.toolbox.ms.file.MSFile;
+import org.grits.toolbox.ms.file.reader.IMSAnnotationFileReader;
+import org.grits.toolbox.ms.om.data.AnalyteSettings;
+import org.grits.toolbox.ms.om.data.Annotation;
+import org.grits.toolbox.ms.om.data.CustomExtraData;
+import org.grits.toolbox.ms.om.data.Data;
+import org.grits.toolbox.ms.om.data.DataHeader;
+import org.grits.toolbox.ms.om.data.Feature;
+import org.grits.toolbox.ms.om.data.FeatureSelection;
+import org.grits.toolbox.ms.om.data.GlycanAnnotation;
+import org.grits.toolbox.ms.om.data.GlycanFeature;
+import org.grits.toolbox.ms.om.data.GlycanScansAnnotation;
+import org.grits.toolbox.ms.om.data.GlycanSettings;
+import org.grits.toolbox.ms.om.data.IonSettings;
+import org.grits.toolbox.ms.om.data.Method;
+import org.grits.toolbox.ms.om.data.Peak;
+import org.grits.toolbox.ms.om.data.Scan;
+import org.grits.toolbox.ms.om.data.ScanFeatures;
+import org.grits.toolbox.ms.om.io.xml.AnnotationReader;
+import org.grits.toolbox.ms.om.io.xml.AnnotationWriter;
+
+import edu.brandeis.glycodenovo.core.CPeak;
+import edu.brandeis.glycodenovo.core.CTopology;
+import edu.brandeis.glycodenovo.core.HLightArrayList;
+
+public class Save {
+	private static final Logger logger = Logger.getLogger(Save.class);
+
+	private SettingForm form;
+	private BuilderWorkspace bw = new BuilderWorkspace(new GlycanRendererAWT());
+	//private HashMap<Integer, Scan> scans;
+	private Data data;
+	private AnalyteSettings testAnalyteSettings;
+	private List<IonSettings> testAdductsToAnalyze;
+	private List<Integer> testAdductsToAnalyzeCnts;
+	private AnnotationWriter writer;
+	private String tempOutputPath;
+
+	private MSFile msFile;
+
+	private int annotationId=1;
+	
+	public Save(SettingForm form, MSFile msFile) {
+		this.form = form;
+		this.msFile = msFile;
+		//this.scans = scans;
+	}
+	
+	public Entry save() {
+		// Some object that is used during the saving process that have unknown purpose
+		testAnalyteSettings = createTestAnalyteSettings();
+		testAdductsToAnalyze = createTestAdducts();
+		testAdductsToAnalyzeCnts = createTestAdductsCnts();
+		
+		// Create a new MS Entry for annotated data
+		Entry msAnnotationEntry = new Entry();
+        // String msEntryDisplayName = form.getEntry().getDisplayName();
+        String msAnnotName = form.getResName();
+        msAnnotationEntry.setDisplayName(msAnnotName);
+        
+        File msAnnFile = getAnnotationFolder(form.getEntry());	
+        String msAnnotationFolder = msAnnFile.getAbsolutePath();
+
+        MSGlycanAnnotationProperty t_property = new MSGlycanAnnotationProperty();
+        MSGlycanAnnotationMetaData metaData = new MSGlycanAnnotationMetaData();		
+        t_property.setMSAnnotationMetaData(metaData);
+        try {
+			metaData.setAnnotationId(this.createRandomId(msAnnotationFolder));
+		} catch (IOException e) {
+			logger.error("Could not generate annotation id", e);
+		}
+        
+        String description = form.getDescription();
+        if ( description == null )
+        	metaData.setDescription("");
+        else metaData.setDescription( description );
+        
+        metaData.setVersion(MSGlycanAnnotationMetaData.CURRENT_VERSION);
+        metaData.setName(t_property.getMetaDataFileName());
+        msAnnotationEntry.setProperty (t_property);        
+        
+        Method testMethod = createTestMethod();
+        
+        data = new Data();
+		DataHeader dHeader = new DataHeader();
+		data.setDataHeader(dHeader);
+		data.getDataHeader().setMethod(testMethod);
+		addAnnotationCustomExtraData(dHeader);
+		// add scan to data
+		data.setScans(getScans(this.msFile));
+		
+		String archiveName = AnnotationWriter.getArchiveFilePath(msAnnotationFolder + File.separator + metaData.getAnnotationId());
+		// System.out.println(archiveName);
+		
+		File fWorkspaceFolderFile = getTempFolder();	
+		tempOutputPath = fWorkspaceFolderFile.getAbsolutePath();
+		writer = new AnnotationWriter();
+		
+		//saveAnnotation ();
+		
+		// the peaks should be retrieved from the MS file using the fileReader instead of getting them from CSpectrum
+		// however the additional manipulations/additions done to the peaklist after it was read from the file 
+		// needs to be performed first before trying to annotate
+		
+		ArrayList<GlycanFeature> parentFeatures = new ArrayList<GlycanFeature>();
+		ArrayList<HLightArrayList<String>> parentDescendants = new ArrayList<HLightArrayList<String>>();
+		int num = 1;
+		for (Scan scan: data.getScans().values()) {
+			if (scan.getMsLevel() == 1) {
+				Peak precursor = scan.getPeaklist().get(0);   // only one peak
+				CPeak cpeak = this.findCPeak(precursor);
+				if (cpeak != null && cpeak.getInferredGWAFormulas() != null) { 
+					// for (String sequence: cpeak.getInferredGWAFormulas()) {
+					for (CTopology tp: cpeak.getInferredTopologies()) {
+						GlycanScansAnnotation glycanScanAnnotation = new GlycanScansAnnotation();
+						String sequence = tp.getGWAFormula();
+						Glycan glycan = Glycan.fromString(sequence);
+						Annotation annot = getAnnotation(glycan, num++);
+						GlycanFeature feature = getNewGlycanFeature(((GlycanAnnotation)annot).getId(), sequence, 2, "T", precursor.getMz(), cpeak.getCharge(), precursor, null);
+						
+						parentFeatures.add(feature);
+						HLightArrayList<String> descendants = new HLightArrayList<String>();
+						tp.getDescendantGWAFormula(descendants);
+						parentDescendants.add( descendants );
+
+						GlycanStructure glycanStructure = new GlycanStructure();
+						glycanStructure.setGWBSequence(glycan.toString());
+						glycanStructure.setSequence(glycan.toGlycoCTCondensed());
+						glycanStructure.setSequenceFormat(GlycanAnnotation.SEQ_FORMAT_GLYCOCT_CONDENSED);
+						glycanStructure.setId(Integer.toString(annot.getId()));
+						glycanScanAnnotation.setStringAnnotationId(glycanStructure.getId());
+						addAnnotationToScan(glycanScanAnnotation, 1, glycanStructure, feature);
+						if( ! data.getAnnotation().contains(annot) ) {
+							data.getAnnotation().add(annot);		
+						}
+						if( ! glycanScanAnnotation.getScanAnnotations().isEmpty() ) {
+							try {
+								writer.writeAnnotationsPerAnalyte(glycanScanAnnotation, tempOutputPath);
+							} catch (IOException e) {
+								logger.error("Cannot write annotation for scan", e);
+							}
+						}
+						if( ! data.getScans().get(scan.getScanNo()).getAnnotatedPeaks().containsKey(precursor.getId()) || 
+								! data.getScans().get(scan.getScanNo()).getAnnotatedPeaks().get(precursor.getId())) {
+							int iNumAnnot = data.getScans().get(scan.getScanNo()).getNumAnnotatedPeaks() != null ? 
+									data.getScans().get(scan.getScanNo()).getNumAnnotatedPeaks() : 0;
+							data.getScans().get(scan.getScanNo()).setNumAnnotatedPeaks(iNumAnnot+1);
+							data.getScans().get(scan.getScanNo()).getAnnotatedPeaks().put(precursor.getId(), Boolean.TRUE);
+						}
+					}
+					
+				}
+			}
+			else {
+				if (scan.getPeaklist() != null && !scan.getPeaklist().isEmpty()) {
+					for (Peak p: scan.getPeaklist()) {
+						// locate matching peak from CSpectrum.peakList
+						CPeak cpeak = this.findCPeak(p);
+						if (cpeak != null && cpeak.getInferredGWAFormulas() != null) {
+							// for (String sequence: cpeak.getInferredGWAFormulas()) {
+							for (CTopology tp: cpeak.getInferredTopologies()) {
+								GlycanScansAnnotation glycanScanAnnotation = new GlycanScansAnnotation();
+								String sequence = tp.getGWAFormula();
+								Glycan glycan = Glycan.fromString(sequence);
+								Annotation annot = getAnnotation(glycan, num++);
+								GlycanStructure glycanStructure = new GlycanStructure();
+								glycanStructure.setGWBSequence(glycan.toString());
+								glycanStructure.setSequence(glycan.toGlycoCTCondensed());
+								glycanStructure.setSequenceFormat(GlycanAnnotation.SEQ_FORMAT_GLYCOCT_CONDENSED);
+								glycanStructure.setId(Integer.toString(annot.getId()));
+								glycanScanAnnotation.setStringAnnotationId(glycanStructure.getId());
+								// for now add this feature to all parent features
+								// TODO determine which parent this fragment feature belongs to
+								
+								GlycanFeature parent;
+								HLightArrayList<String> descendents;
+								for ( int pIdx = 0; pIdx < parentFeatures.size(); pIdx ++ ) {
+									descendents = parentDescendants.get(pIdx);
+									if ( descendents.indexOf( sequence ) >= 0 ) {
+										parent = parentFeatures.get(pIdx);
+										GlycanFeature feature = getNewGlycanFeature(parent.getAnnotationId(), sequence, null, tp.getType(), p.getMz(), cpeak.getCharge(), p, parent);
+										parent.getGlycanFragment().add(feature);
+										addAnnotationToScan(glycanScanAnnotation, 2, glycanStructure, feature);
+									}
+								}
+								if( ! data.getAnnotation().contains(annot) ) {
+									data.getAnnotation().add(annot);		
+								}
+								if( ! glycanScanAnnotation.getScanAnnotations().isEmpty() ) {
+									try {
+										writer.writeAnnotationsPerAnalyte(glycanScanAnnotation, tempOutputPath);
+									} catch (IOException e) {
+										logger.error("Cannot write annotation for scan", e);
+									}
+								}
+								if( ! data.getScans().get(scan.getScanNo()).getAnnotatedPeaks().containsKey(p.getId()) || 
+										! data.getScans().get(scan.getScanNo()).getAnnotatedPeaks().get(p.getId())) {
+									int iNumAnnot = data.getScans().get(scan.getScanNo()).getNumAnnotatedPeaks() != null ? 
+											data.getScans().get(scan.getScanNo()).getNumAnnotatedPeaks() : 0;
+									data.getScans().get(scan.getScanNo()).setNumAnnotatedPeaks(iNumAnnot+1);
+									data.getScans().get(scan.getScanNo()).getAnnotatedPeaks().put(p.getId(), Boolean.TRUE);
+								}
+								
+							}
+							
+						} else if (cpeak == null){
+							System.out.println ("Could not find matching peak for " + p.getMz());
+						}
+					}
+				}
+			}
+		}
+		
+		// System.out.println(archiveName);
+	/*	List<CPeak> peakList = form.getSpectrum().getPeakList();
+		int num = 1;
+		// populate the data for each GWA sequence
+		GlycanScansAnnotation glycanScanAnnotation = new GlycanScansAnnotation();
+		int peakCnt = 2;
+		for (CPeak peak: peakList) {
+			if (peak.getInferredGWAFormulas() != null) {
+				for (String sequence: peak.getInferredGWAFormulas()) {
+					Glycan glycan = Glycan.fromString(sequence);
+					peak.setID(peakCnt++);
+					//TODO the following fails since peak has "null" id. 
+					processStructure(0, 1, num++, peak, glycan, glycanScanAnnotation);
+				}
+			}
+		}*/
+		
+		populateScanFeatureData(tempOutputPath);
+		try {
+			writer.generateScansAnnotationFiles(tempOutputPath, data, 
+					archiveName, true, true, true, true );
+		} catch (IOException e) {
+			logger.error("Cannot generate annotation files", e);
+		}
+				
+		MSPropertyDataFile dataFile = getMSPropertyDataFile();
+		
+		t_property.getMSAnnotationMetaData().addAnnotationFile(dataFile);
+		
+		PropertyDataFile msMetaData = MSAnnotationProperty.getNewSettingsFile(t_property.getMetaDataFileName(), 
+				t_property.getMSAnnotationMetaData());
+		t_property.getDataFiles().add(msMetaData);
+		addResultFileToMetaData(dHeader.getMethod().getMsType(), t_property, archiveName);
+		
+		//System.out.println(t_property.getMetaDataFileName());
+		
+		MSAnnotationProperty.marshallSettingsFile(t_property.getAnnotationFolder(form.getEntry()) + File.separator +
+				t_property.getMetaDataFileName(), t_property.getMSAnnotationMetaData());
+		
+		return msAnnotationEntry;
+	}
+	
+	Annotation getAnnotation (Glycan glycan, int iStrucNum) {		
+		GlycanAnnotation glycanAnnotation = new GlycanAnnotation();
+		
+		glycanAnnotation.setId(iStrucNum);
+		glycanAnnotation.setStringId(Integer.toString(iStrucNum));
+		glycanAnnotation.setSequenceGWB(glycan.toString().substring(0,glycan.toString().indexOf("$")));
+		glycanAnnotation.setSequence(glycan.toGlycoCTCondensed());
+		glycanAnnotation.setSequenceFormat(GlycanAnnotation.SEQ_FORMAT_GLYCOCT_CONDENSED);
+		
+		GlycanStructureAnnotation.populateExtraInfo(glycanAnnotation, glycan);
+		
+		return glycanAnnotation;
+	}
+
+	private CPeak findCPeak(Peak p) {
+		List<CPeak> peakList = form.getSpectrum().getPeakList();
+		for (CPeak peak: peakList) {
+			if (Math.abs(p.getMz() - peak.getRawMZ()) <= 0.0001 ) // allow round up error
+				return peak;
+		}
+		return null;
+	}
+
+	protected HashMap<Integer, Scan> getScans(MSFile msFile) {
+		if (msFile.getReader() instanceof IMSAnnotationFileReader) {
+			List<Scan> scans = ((IMSAnnotationFileReader) msFile.getReader()).readMSFile(msFile);
+			return GelatoUtils.listToHashMap(scans, 0.0, null, 0.0, null);
+		}
+		return null;
+	}
+	
+	private String createRandomId(String msAnnotation) throws IOException {
+		File simFolder = new File(msAnnotation);
+		if (!simFolder.exists()) {
+			simFolder.mkdirs();
+		}
+		// get a random id for the folder name
+		String entryId = MSGlycanAnnotationProperty.getRandomId();
+		return entryId;
+	}
+	
+	/**
+	 * @param msEntry
+	 *            - the current MS Entry to annotation
+	 * @return File - the destination folder for GELATO output files
+	 */
+	private File getAnnotationFolder(Entry msEntry) {
+		String workspaceLocation = getWorkspaceLocation();
+		MSGlycanAnnotationProperty t_property = new MSGlycanAnnotationProperty();
+		Entry projectEntry = DataModelSearch.findParentByType(msEntry, ProjectProperty.TYPE);
+		String projectName = projectEntry.getDisplayName();
+
+		String msAnnotationFolder = workspaceLocation + projectName + File.separator 
+				+ t_property.getArchiveFolder() + File.separator;
+		File msAnnotationFolderFile = new File(msAnnotationFolder);
+		msAnnotationFolderFile.mkdirs();
+
+		return msAnnotationFolderFile;
+	}
+	
+	/**
+	 * @return String (the workspace location stored in the PropertyHandler)
+	 */
+	private String getWorkspaceLocation() {
+		return PropertyHandler.getVariable("workspace_location");
+	}
+	
+	// Steps below corresponding to CreatingAnnotation Section
+	private AnalyteSettings createTestAnalyteSettings() {
+		AnalyteSettings analyteSettings = new AnalyteSettings();
+		GlycanSettings glycanSettings = new GlycanSettings();
+		analyteSettings.setGlycanSettings(glycanSettings);
+		return analyteSettings;
+	}
+	
+	private List<IonSettings> createTestAdducts() {
+		List<IonSettings> testAdductsToAnalyze = new ArrayList<>();
+		IonSettings testAdduct = new IonSettings("TestAdduct", 1.0, "Test Glycan Adduct", 2, Boolean.TRUE);		
+		testAdductsToAnalyze.add(testAdduct);
+		return testAdductsToAnalyze;
+	}
+	
+	private List<Integer> createTestAdductsCnts() {
+		List<Integer> testAdductsToAnalyzeCnts = new ArrayList<>();
+		testAdductsToAnalyzeCnts.add(Integer.valueOf(1));
+		return testAdductsToAnalyzeCnts;
+	}
+	
+	private Method createTestMethod() {
+		Method testMethod = new Method();
+
+		// Set the MS Method type. Options:
+		/*
+		 * (from the Method.java class) public static final String
+		 * MS_TYPE_INFUSION = "Direct Infusion"; public static final String
+		 * MS_TYPE_LC = "LC-MS/MS"; public static final String MS_TYPE_TIM =
+		 * "Total Ion Mapping (TIM)"; public static final String
+		 * MS_TYPE_MSPROFILE = "MS Profile";
+		 */
+		testMethod.setMsType(form.getExperimentType());
+		//testMethod.setMsType(Method.MS_TYPE_INFUSION);
+
+		// Right now, we only really support generic "glycan"
+		testMethod.setAnnotationType(Method.ANNOTATION_TYPE_GLYCAN);
+
+		// set accuracy information
+		testMethod.setAccuracy(500.0);
+		testMethod.setAccuracyPpm(true); // true means PPM
+
+		testMethod.setFragAccuracy(500.0);
+		testMethod.setFragAccuracyPpm(true); // true means PPM
+
+		testMethod.setShift(0.0);
+		
+		return testMethod;
+	}
+	
+	/**
+	 * 
+	 * @param iParentScan
+	 * @param iSubScanNum
+	 * @param iStrucNum
+	 * @param sequence
+	 * @return
+	 */
+	/*private boolean processStructure(Integer iParentScan, int iSubScanNum, int iStrucNum, CPeak peak, 
+			Glycan glycan, GlycanScansAnnotation glycanScanAnnotation) {
+		
+		GlycanStructure glycanStructure = new GlycanStructure();
+		glycanStructure.setGWBSequence(glycan.toString());
+		glycanStructure.setSequence(glycan.toGlycoCTCondensed());
+		glycanStructure.setSequenceFormat(GlycanAnnotation.SEQ_FORMAT_GLYCOCT_CONDENSED);
+		glycanStructure.setId(Integer.toString(iStrucNum));
+		
+		//initialize values in glycanScanAnnotation object
+		
+		GlycanAnnotation glycanAnnotation = new GlycanAnnotation();
+		glycanScanAnnotation.setAnnotationId(iStrucNum);
+		glycanAnnotation.setId(iStrucNum);
+		
+		glycanScanAnnotation.setStringAnnotationId(glycanStructure.getId());
+//		glycanIDs.add("Scan " + iParentScan + "SubScan " + iSubScanNum
+//				+ "Peak " + iStrucNum);
+
+		glycanAnnotation.setStringId(glycanStructure.getId());
+		glycanAnnotation.setSequenceGWB(glycan.toString().substring(0,glycan.toString().indexOf("$")));
+		glycanAnnotation.setSequence(glycanStructure.getSequence());
+		
+		GlycanStructureAnnotation.populateExtraInfo(glycanAnnotation, glycan);
+
+		int iCurrentFeatureId = data.getFeatureIndex();			
+
+		boolean bRes = matchSingleSubScan(glycanStructure, iParentScan, iSubScanNum, iStrucNum, glycanScanAnnotation, glycanAnnotation, peak, glycan);
+		if( bRes ) {
+			if( ! data.getScans().get(iSubScanNum).getAnnotatedPeaks().containsKey(peak.getId()) || 
+					! data.getScans().get(iSubScanNum).getAnnotatedPeaks().get(peak.getId())) {
+				int iNumAnnot = data.getScans().get(iSubScanNum).getNumAnnotatedPeaks() != null ? 
+						data.getScans().get(iSubScanNum).getNumAnnotatedPeaks() : 0;
+				data.getScans().get(iSubScanNum).setNumAnnotatedPeaks(iNumAnnot+1);
+				data.getScans().get(iSubScanNum).getAnnotatedPeaks().put(peak.getId(), Boolean.TRUE);
+			}
+		//	if(iCurrentFeatureId != data.getFeatureIndex()) {//means there is new annotations added using the given glycan structure
+		//		data.getAnnotation().add(glycanAnnotation);
+		//	}
+			if( ! glycanScanAnnotation.getScanAnnotations().isEmpty() ) {
+				try {
+					writer.writeAnnotationsPerAnalyte(glycanScanAnnotation, tempOutputPath);
+				} catch (IOException e) {
+					logger.error("Cannot write annotation for scan", e);
+				}
+			}
+			return true;
+		}
+		return false;
+	}*/
+	
+	/**
+	 * @param structure
+	 * @param iParentScanNum
+	 * @param iSubScanNum
+	 * @param iStrucNum
+	 * @param glycanScanAnnotation
+	 * @param glycanAnnotation
+	 * @param peak
+	 * @param glycan
+	 * @return
+	 */
+	/*private boolean matchSingleSubScan(GlycanStructure structure, Integer iParentScanNum, 
+			int iSubScanNum, int iStrucNum, GlycanScansAnnotation glycanScanAnnotation, 
+			GlycanAnnotation glycanAnnotation, CPeak peak, Glycan glycan) {
+		// Sena, the following not being used: if needed, need to figure out how to get Analyte
+		//double[] glycanMzAndCharge = GelatoUtils.getAnalyteMzAndCharge(analyte.getAnalyte(), testAnalyteSettings, 
+		//		testAdductsToAnalyze, testAdductsToAnalyzeCnts, null, null, null, null);    
+
+		//double glycanMz = glycanMzAndCharge[0];
+		// int iParentCharge = (int) glycanMzAndCharge[1];
+		
+		//System.out.println(glycanMz);
+		GlycanFeature feature = null;
+		if (iParentScanNum != null) {
+			// sub scan, need to find the parentFeature
+			feature = getNewGlycanFeature(glycanAnnotation, 
+					glycan.toString(),
+					iParentScanNum, peak.getRawMZ(), peak.getCharge(), peak, findParentFeature (glycanScanAnnotation, peak));
+		}
+		else {
+			feature = getNewGlycanFeature(glycanAnnotation, 
+				glycan.toString(),
+				iParentScanNum, peak.getRawMZ(), peak.getCharge(), peak, null);   // peak.getRawMz was peak.getMass() -- Sena
+		}
+		
+		System.out.print(feature);
+		System.out.print(", " + feature.getCharge());
+		System.out.println(", " + feature.getSequence() + ", " + feature.getAnnotationId());
+		System.out.println();
+		
+		try {
+			if ( glycanScanAnnotation.getScanAnnotations().get(iSubScanNum) == null ) {
+				List<Feature> features = new ArrayList<Feature>();
+				features.add(feature);
+				glycanScanAnnotation.getScanAnnotations().put(iSubScanNum, features);
+			} else if( ! glycanScanAnnotation.getScanAnnotations().get(iSubScanNum).contains(feature) ) {
+				glycanScanAnnotation.getScanAnnotations().get(iSubScanNum).add(feature);
+			}
+			if ( data.getAnnotatedScan().get(iSubScanNum) == null ) {
+				List<String> ids = new ArrayList<String>();
+				ids.add(glycanAnnotation.getStringId());
+				data.getAnnotatedScan().put(iSubScanNum, ids);
+			}
+			else if( ! data.getAnnotatedScan().get(iSubScanNum).contains( glycanAnnotation.getStringId() )){
+				data.getAnnotatedScan().get(iSubScanNum).add(glycanAnnotation.getStringId());
+			}		
+			if( ! data.getAnnotation().contains(glycanAnnotation) ) {
+				data.getAnnotation().add(glycanAnnotation);
+//				GlycanStructureAnnotation.iAnnotationIDCount++;				
+			}
+		} catch( Exception e ) {
+			logger.error("Error matching glycans in matchGlycanStructure.", e );
+		}
+		
+	//	if(data.getAnnotatedScan().get(iSubScanNum) == null){
+	//		//System.out.println("At match single subscan, data.getAnnotatedScan().get(iSubScanNum) == null");
+	//		List<String> ids = new ArrayList<String>();
+	//		ids.add(glycanAnnotation.getStringId());
+	//		data.getAnnotatedScan().put(iSubScanNum, ids);
+	//	} else{
+	//		//System.out.println("At match single subscan, data.getAnnotatedScan().get(iSubScanNum) != null");
+	//		data.getAnnotatedScan().get(iSubScanNum).add(glycanAnnotation.getStringId());
+	//	}
+		//addAnnotationToScan(glycanScanAnnotation, iSubScanNum, structure, feature);
+		return true;
+	}*/
+
+	/*private void populateScanFeatureData(String glycanFilesPath) {
+		//define objects to gather the MS1 annotation while processing MS2
+		AnnotationReader reader = new AnnotationReader();
+		GlycanScansAnnotation glycanAnnotation = new GlycanScansAnnotation();
+		ScanFeatures scanFeatures = null;
+		//scanFeatures.setUsesComplexRowId(true);
+		for(Integer scanId : data.getScans().keySet()) {
+			scanFeatures = new ScanFeatures();
+			scanFeatures.setScanId(scanId);
+			scanFeatures.setUsesComplexRowId(true);
+			scanFeatures.setScanPeaks(new HashSet<Peak>(data.getScans().get(scanId).getPeaklist()));
+			data.getScanFeatures().put(scanId, scanFeatures);
+			if(data.getAnnotatedScan().get(scanId) != null){
+				for(String glycanId : data.getAnnotatedScan().get(scanId)){
+					//glycanAnnotation = reader.readglycanAnnotation(glycanFilesPath, glycanId); // Sena: replaced with the following
+					glycanAnnotation = (GlycanScansAnnotation) reader.readAnnotation(glycanFilesPath, glycanId, GlycanScansAnnotation.class);
+					if(glycanAnnotation != null && glycanAnnotation.getScanAnnotations().get(scanId) != null) {
+						for( Feature f : glycanAnnotation.getScanAnnotations().get(scanId) ) {
+							boolean found = false;
+							for (Feature scanF: scanFeatures.getFeatures()) {
+								if (f.getId().equals(scanF.getId()))
+									found = true;
+							}
+							//if( ! scanFeatures.getFeatures().contains(f) ) {
+							if (!found) scanFeatures.getFeatures().add(f);
+						}
+					}
+				}
+			}
+		}
+	}*/
+	
+	private void populateScanFeatureData (String glycanFilesPath) {
+		//define objects to gather the MS1 annotation while processing MS2
+		AnnotationReader reader = new AnnotationReader();
+		GlycanScansAnnotation glycanAnnotation = new GlycanScansAnnotation();
+		ScanFeatures scanFeatures = null;
+		HashMap<String, Integer> seen = new HashMap<>();
+		for( Integer scanId : data.getAnnotatedScan().keySet() ) {
+			for(String analyteId : data.getAnnotatedScan().get(scanId)){
+				if( seen.containsKey(analyteId) ) {
+					continue;
+				}
+				glycanAnnotation = (GlycanScansAnnotation) reader.readAnnotation(glycanFilesPath, analyteId, GlycanScansAnnotation.class);
+				if(glycanAnnotation != null ) {
+					for( Integer scanId2 : glycanAnnotation.getScanAnnotations().keySet() ) {
+						
+						if( data.getScanFeatures().containsKey(scanId2) ) {
+							scanFeatures = data.getScanFeatures().get(scanId2);
+						} else {
+							scanFeatures = new ScanFeatures();
+							scanFeatures.setScanId(scanId2);
+							scanFeatures.setUsesComplexRowId(true);
+							scanFeatures.setScanPeaks(new HashSet<Peak>(data.getScans().get(scanId2).getPeaklist()));
+							data.getScanFeatures().put(scanId2, scanFeatures);		
+						}
+						if( glycanAnnotation.getScanAnnotations().get(scanId2) != null) {				
+							List<Feature> lF = glycanAnnotation.getScanAnnotations().get(scanId2);
+							for( Feature f : lF ) {
+								boolean found = false;
+								for (Feature scanF: scanFeatures.getFeatures()) {
+									if (f.getId().equals(scanF.getId()))
+										found = true;
+								}
+								//if( ! scanFeatures.getFeatures().contains(f) ) {
+								if (!found) scanFeatures.getFeatures().add(f);
+							}
+						}
+					}
+				}//if glycanAnnotations
+				seen.put(analyteId, 1);
+			}
+		}
+	}
+	
+	private void addAnnotationToScan(GlycanScansAnnotation glycanScanAnnotations, int iScanNum, GlycanStructure structure, GlycanFeature feature) {
+		try {
+			if ( glycanScanAnnotations.getScanAnnotations().get(iScanNum) == null ) {
+				//System.out.println("null scan annotations " + iScanNum);
+				ArrayList<Feature> glycanFeature = new ArrayList<Feature>();
+				glycanFeature.add(feature);
+				glycanScanAnnotations.getScanAnnotations().put(iScanNum, glycanFeature);
+			} else if( ! glycanScanAnnotations.getScanAnnotations().get(iScanNum).contains(feature) ) {
+				//System.out.println("add to existing scan annotations " + iScanNum);
+				glycanScanAnnotations.getScanAnnotations().get(iScanNum).add(feature);
+			}
+			if ( data.getAnnotatedScan().get(iScanNum) == null ) {
+				List<String> ids = new ArrayList<String>();
+				ids.add(structure.getId());
+				data.getAnnotatedScan().put(iScanNum, ids);
+			}
+			else if( ! data.getAnnotatedScan().get(iScanNum).contains( structure.getId() )){
+				data.getAnnotatedScan().get(iScanNum).add(structure.getId());
+			}	
+		} catch( Exception e ) {
+			logger.error("Error matching glycans in matchGlycanStructure.", e );
+		}
+	}
+	
+	private GlycanFeature getNewGlycanFeature(Integer annotId, String sSeq, Integer iScanNum,
+			String ionType, double glycanMz, double charge, Peak peak, Feature parentFeature) {
+		GlycanFeature feature = new GlycanFeature();
+		feature.setId(Integer.toString(data.getNextFeatureIndex()));
+		//feature.setSequence(sSeq.substring(0,sSeq.indexOf("$")));   
+		feature.setSequence(sSeq);
+		feature.setCharge((int)charge);
+		double deviation = ((Math.abs(peak.getMz() - glycanMz)/glycanMz)*1000000.0);
+		feature.setDeviation(deviation);
+		
+		feature.setMz(glycanMz);
+		//feature.getPeaks().add(peak.getId());   // deprecated, Sena
+		String rowId = Feature.getRowId(peak.getId(), iScanNum, true);
+		FeatureSelection fSelection = new FeatureSelection();
+		fSelection.setRowId(rowId);
+		fSelection.setComment("Not Complementary");
+		feature.getFeatureSelections().add(fSelection);
+		feature.setAnnotationId(annotId);
+		feature.setPrecursor(-1);
+		//need to set parent feature id
+		if (parentFeature != null) {
+			feature.setParentId(parentFeature.getId());
+		}
+		feature.setFragmentType(ionType);
+		//TODO how to find the fragment type???
+		//feature.setFragmentType(((CPeak)peak).getInferredSuperSets().get(0).);
+		//System.out.println(feature.getSequence());
+		
+		return feature;				
+	}
+	
+	/**
+	 * @param msAnnotationFolder - the destination folder for output
+	 * @return MSGlycanAnnotationProperty - property of the MS Glycan Annotation object
+	 */
+	protected MSAnnotationProperty getMSAnnotationProperty(String msAnnotationFolder) {
+		MSGlycanAnnotationProperty t_property = new MSGlycanAnnotationProperty();
+		MSGlycanAnnotationMetaData metaData = new MSGlycanAnnotationMetaData();
+		t_property.setMSAnnotationMetaData(metaData);
+		//metaData.setAnnotationId(this.createRandomId(msAnnotationFolder));
+		metaData.setDescription(form.getDescription());
+		metaData.setVersion(MSGlycanAnnotationMetaData.CURRENT_VERSION);
+		metaData.setName(t_property.getMetaDataFileName());
+		return t_property;
+	}
+	
+	//error here, set the mzxml file
+	private MSPropertyDataFile getMSPropertyDataFile() {
+		return form.getDataFile();
+	}
+	
+	/**
+	 * At current time, LC-MS/MS is not supported, we need more information 
+	 * @param sMSType
+	 * @param msAnnotProperty
+	 */
+	private void addResultFileToMetaData(String sMSType, MSAnnotationProperty msAnnotProperty, String archiveName) {
+		if (!sMSType.equals(Method.MS_TYPE_LC)) {
+			File annotationFile = new File( archiveName );
+			MSPropertyDataFile pdfFolder = new MSPropertyDataFile(annotationFile.getName(), 
+					MSAnnotationFileInfo.MS_ANNOTATION_CURRENT_VERSION, 
+					MSAnnotationFileInfo.MS_ANNOTATION_TYPE_FILE,
+					FileCategory.ANNOTATION_CATEGORY, 
+					GeneralInformationMulti.FILE_TYPE_GELATO,
+					annotationFile.getPath(), new ArrayList<String>() );
+			msAnnotProperty.getMSAnnotationMetaData().addFile(pdfFolder);
+		}
+	}
+	
+	private File getTempFolder() {
+		String workspaceLocation = getWorkspaceLocation();
+		String t_tempFolder = workspaceLocation + ".temp" + File.separator + "GELATO_" + Long.toString(System.currentTimeMillis()) + File.separator;
+		File t_tempFolderFile = new File(t_tempFolder);
+		t_tempFolderFile.mkdirs();
+		return t_tempFolderFile;
+	}
+	
+	/**
+	 * Adds the custom extra data into DataHeader appropriate for "Annotations". <br>
+	 * Currently, these are stored in the class "GlycanExtraInfo"
+	 */
+	protected void addAnnotationCustomExtraData(DataHeader dataHeader) {
+		List<CustomExtraData> lCED = GlycanExtraInfo.getColumns();
+		for( CustomExtraData ced : lCED ) {
+			dataHeader.getAnnotationCustomExtraData().add(ced);
+		}
+	}
+}

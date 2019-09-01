@@ -1,0 +1,296 @@
+package edu.brandeis.glycodenovo.core;
+
+import java.util.*;
+
+// Copyright [2018] [Pengyu Hong at Brandeis University]
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Reconstruction <root,branchSet,topologySet>
+/**
+ * root --- mRootMono branchSet --- mBranches topologySet --- mTopologies
+ */
+// A set of topologies that are of the same type, the same root, and the "same" mass
+
+public class CTopologySet {
+	protected String 				mType; // ion type
+	protected double 				mMassPeak;
+	protected double 				mMassLow;
+	protected double 				mMassHigh;
+	protected CMonosaccharide 		mGapMono; // mGapMono for gap: "-> mRootMono -> mGapMono -> ... -> ReducingEnd"
+	protected CMonosaccharide 		mRootMono;
+	protected CMonosaccharide[] 	mBranchGapMonos = new CMonosaccharide[4]; // "-> mBranches[k] -> mGapMono[k] -> ... -> ReducingEnd", one for each branch
+	protected CTopologySuperSet[] 	mBranches = new CTopologySuperSet[4]; // one TSS per branch
+
+	protected boolean 				mLegal = true; // indicate if it's legal
+	protected int 					mMinusH; // indicate whether this TS has minus2H
+	
+	protected CGlycoDeNovo 			mReconstroctor; // for convenient access.
+	protected boolean 				mReconstrocted = false;
+	protected int 					mCandidateNum;
+	protected List<CTopology> 		mTopologies;
+	protected List<String> 			mTopologyFormulas;
+
+	protected Map<Integer, Integer> mTargetPeaks = new HashMap<>(); // peak index --> peak type; 1 = B-ion, 2 = C-ion
+
+	private CTopology[] 			mBranchTopologies = new CTopology[4]; // used in reconstructing topologies and their formula
+
+	// some constructors with different input
+	public CTopologySet(String type, double massCenter, double massLow, double massHigh, CMonosaccharide rootMono,
+			CTopologySuperSet[] branches, CGlycoDeNovo reconstroctor) {
+		mType = type;
+		mMassPeak = massCenter;
+		mMassLow = massLow;
+		mMassHigh = massHigh;
+		mRootMono = rootMono;
+		mBranches = branches.clone();
+		mReconstroctor = reconstroctor;
+	}
+
+	public CTopologySet(String type, double massCenter, double massLow, double massHigh, CMonosaccharide rootMono,
+			CMonosaccharide MissingMono, CTopologySuperSet[] branches, CGlycoDeNovo reconstroctor) {
+		this(type, massCenter, massLow, massHigh, rootMono, branches, reconstroctor);
+		mGapMono = MissingMono;
+	}
+
+	public CTopologySet(String type, double massCenter, double massLow, double massHigh, CMonosaccharide rootMono,
+			CTopologySuperSet[] branches, CGlycoDeNovo reconstroctor, int minusH) {
+		this(type, massCenter, massLow, massHigh, rootMono, branches, reconstroctor);
+		mMinusH = minusH;
+	}
+
+	public CTopologySet(String type, double massCenter, double massLow, double massHigh, CMonosaccharide rootMono,
+			CMonosaccharide gapMono, CTopologySuperSet[] branches, CGlycoDeNovo reconstroctor, int minusH) {
+		this(type, massCenter, massLow, massHigh, rootMono, branches, reconstroctor);
+		mGapMono = gapMono;
+		mMinusH = minusH;
+	}
+
+	public CTopologySet(String type, double massCenter, double massLow, double massHigh, CMonosaccharide rootMono,
+			CMonosaccharide gapMono, int gapInBranch, CTopologySuperSet[] branches, CGlycoDeNovo reconstroctor, int minusH) {
+		this(type, massCenter, massLow, massHigh, rootMono, branches, reconstroctor);
+		mBranchGapMonos[gapInBranch] = gapMono;
+		mMinusH = minusH;
+	}
+
+	public CTopologySet(String type, double massCenter, double massLow, double massHigh, CMonosaccharide rootMono,
+			CMonosaccharide gapMono, int gapInBranch, CTopologySuperSet[] branches, CGlycoDeNovo reconstroctor) {
+		this(type, massCenter, massLow, massHigh, rootMono, branches, reconstroctor);
+		mBranchGapMonos[gapInBranch] = gapMono;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+		CTopologySet that = (CTopologySet) o;
+		// don't do this comparison because the massNormal is diff when the Ion
+		// type is different!!
+		// if (Double.compare(that.mMassPeak, mMassPeak) != 0) return false;
+		
+		if (Math.abs( this.mMassLow - that.mMassLow) > 0.00001 )
+			return false;
+		if (Math.abs( this.mMassHigh- that.mMassHigh) > 0.00001 )
+			return false;
+		
+		if ( mRootMono != null ? !mRootMono.equals(that.mRootMono) : that.mRootMono != null)
+			return false;
+
+        return Arrays.equals(mBranches, that.mBranches) && Arrays.equals(mBranchGapMonos, that.mBranchGapMonos);
+	}
+
+	@Override
+	public int hashCode() {
+		int result;
+		long temp;
+		temp = Double.doubleToLongBits(mMassPeak);
+		result = (int) (temp ^ (temp >>> 32));
+		temp = Double.doubleToLongBits(mMassLow);
+		result = 31 * result + (int) (temp ^ (temp >>> 32));
+		temp = Double.doubleToLongBits(mMassHigh);
+		result = 31 * result + (int) (temp ^ (temp >>> 32));
+		result = 31 * result + (mRootMono != null ? mRootMono.hashCode() : 0);
+		result = 31 * result + Arrays.hashCode(mBranchGapMonos);
+		result = 31 * result + Arrays.hashCode(mBranches);
+		return result;
+	}
+
+	void reconstructFormulas() {
+		// steps 5 - 7
+		if (mReconstrocted)
+			return;
+		
+		// steps 8 - 10
+		// Make sure all branches are reconstructed. If not, reconstruct.
+		for (int k = 0; k < 4; k++) {
+			CTopologySuperSet s = mBranches[k];
+			if (s != null) {
+				if (!s.mReconstructed)
+					s.reconstructFormulas();
+			} else
+				break;
+		}
+
+		// step 11 - 18
+		mTopologyFormulas = new ArrayList<String>(2000); //pre-allocate some space
+		mTopologies = new ArrayList<CTopology>(2000); //pre-allocate some space
+		mCandidateNum = 0;
+		recFormula(0); // start with branchIdx = 0
+		mReconstrocted = true;
+		mLegal = (mCandidateNum > 0);
+		if (mLegal) {
+			mTopologyFormulas = mTopologyFormulas.subList(0, mCandidateNum); // java sublist toIndex is exclusive!
+			mTopologies = mTopologies.subList(0, mCandidateNum);
+		}
+	}
+
+	// step 11 - 18
+	private void recFormula(int branchIdx) {
+		// recursively reconstruct formula
+		if (branchIdx > 3 || mBranches[branchIdx] == null) {
+			// reconstruct formula when for-loop to the last branch
+			int branchCount = branchIdx;
+			int[] compositionCountMerged = new int[8];
+			compositionCountMerged[mRootMono.mClassID - 1] = 1;
+			// this peaks will be add to support peaks
+			HashSet<CPeak> peaks = new HashSet<>();
+			for (Integer peakIdx : mTargetPeaks.keySet()) {
+				peaks.add(mReconstroctor.mPeaks.get(peakIdx));
+			}
+			double mass = mRootMono.mMass - CMass.H2O + CMass.Proton;
+			if  ( mReconstroctor.mPermethylated )
+				mass -= CMass.CH2;
+
+			if (mType.equals("T"))
+				mass += mReconstroctor.mFinalPeakCompensation;
+
+			String formula;
+			String gwaFormula;
+			// add missing mono to the formula
+			if (mGapMono == null) {
+				formula = mRootMono.mClass;
+				//if (mType.equals("T"))
+				gwaFormula = "freeEnd--?b1D-" + mRootMono.mClass + ",p";
+				//else
+				//	gwaFormula = "--?b1D-" + mRootMono.mClass + ",p";
+			} else {
+				formula = mGapMono.mClass + " " + mRootMono.mClass;
+				//gwaFormula = "--4b1D-" + mRootMono.mClass + ",p--4b1D-" + mGapMono + ",p";
+				gwaFormula = "freeEnd--?b1D-" + mRootMono.mClass + ",p--4b1D-" + mGapMono + ",p";
+				compositionCountMerged[mGapMono.mClassID - 1] += 1;
+				mass += mGapMono.mMass - CMass.H2O;
+				if ( mReconstroctor.mPermethylated )
+					mass -= CMass.CH2 * 2;
+			}
+
+			if (branchCount > 0) {
+				// append branch formula to the root
+				String[] branchFormulas = new String[branchCount];
+				String[] gwaBranchFormulas = new String[branchCount];
+				// judge if the bonds of mono is valid
+				for (int i = 0; i < branchCount; i++) {
+					// if not valid, we should return
+					if (mGapMono == null) {
+						if (!CGlycoDeNovo.cLegalGlycosidicBonds[mBranchTopologies[i].mRootMonoClassID-1][mRootMono.mClassID-1])
+							return;
+					} else {
+						if (!CGlycoDeNovo.cLegalGlycosidicBonds[mBranchTopologies[i].mRootMonoClassID-1][mGapMono.mClassID-1])
+							return;
+					}
+					// if valid, we should generate formula from branch
+					mass += mBranchTopologies[i].mMass - CMass.Proton;
+					if (mReconstroctor.mPermethylated) {
+						mass -= CMass.CH2;
+					}
+
+					peaks.addAll(mBranchTopologies[i].mSupportPeaks);
+					for (int j = 0; j < compositionCountMerged.length; j++) {
+						compositionCountMerged[j] += mBranchTopologies[i].mCopositionCount[j];
+					}
+					// generate formula if no gap exist
+					if (mBranchGapMonos[i] == null) {
+						branchFormulas[i] = mBranchTopologies[i].mFormula;
+						gwaBranchFormulas[i] = mBranchTopologies[i].mGWAFormula.substring(7); // remove "freeEnd" in the beginning.
+					} else {
+						// generate formula if there is a gap
+						mass += mBranchGapMonos[i].mMass - CMass.H2O;
+						if (mReconstroctor.mPermethylated) {
+							mass -= CMass.CH2 * 2;
+						}
+						branchFormulas[i] = mBranchTopologies[i].mFormula + " " + mBranchGapMonos[i].mClass;
+						gwaBranchFormulas[i] = "--4b1D-" + mBranchGapMonos[i].mClass + ",p--4b1D-"
+								+ mBranchTopologies[i].mGWAFormula.substring(7) + ",p"; //mGWAFormula.substring(7) removes "freeEnd" in the beginning.
+						compositionCountMerged[mBranchGapMonos[i].mClassID - 1] += 1;
+					}
+				}
+
+				if (mMassHigh - mMassLow < 0.000001) {
+					// Want to test if obj.mMasses(2) == obj.mMasses(3).
+					// However, due to rounding error, sometimes obj.mMasses(2)
+					// may not be exactly equal to obj.mMasses(3)
+					if (Math.abs(mass - mMassLow) > mReconstroctor.mMassAccuracyDalton)
+						return;
+				} else if (mass <= mMassLow || mass >= mMassHigh)
+					return;
+				if (branchCount == 1)
+					formula = branchFormulas[0] + " " + formula;
+				else {
+					Arrays.sort(branchFormulas);
+					for (String s : branchFormulas) {
+						formula = "[" + s + "] " + formula;
+					}
+				}
+				String gwaFormulaofAllBranches = gwaBranchFormulas[0];
+				for (int i = 1; i < gwaBranchFormulas.length; i++) {
+					gwaFormulaofAllBranches = "(" + gwaFormulaofAllBranches + ")" + gwaBranchFormulas[i];
+				}
+				gwaFormula = gwaFormula + gwaFormulaofAllBranches;
+			}
+
+			for (int i = 0; i < 8; i++) {
+				if (compositionCountMerged[i] > mReconstroctor.mCompositionCountThreshold[i]) {
+					return;
+				}
+			}
+			// avoid same formula result
+			for (String mTopologyFormula : mTopologyFormulas) {
+				if (mTopologyFormula.equals(formula))
+					return;
+			}
+			mCandidateNum++;
+			// add current formula to formula list
+			mTopologyFormulas.add(formula);
+			// add all possible result of formula and result to mTopologies
+
+			CTopology newTP = new CTopology(formula, gwaFormula, mRootMono.mClassID, peaks, (double) peaks.size(), mass,
+					mType, compositionCountMerged);
+			
+			// This is a cheap way with potential bugs. We may need a global Topology set to do the job.
+			for (int i = 0; i < branchCount; i++) 
+			{
+				CTopology temp = newTP.addChild( this.mBranchTopologies[i] );
+				if ( temp != this.mBranchTopologies[i] )
+				{
+					for ( CTopology ctp : this.mBranchTopologies[i].mChildrenTopologies )
+						newTP.addChild(ctp);
+				}
+			}
+			
+			mTopologies.add(newTP);
+		} else if (!mBranches[branchIdx].mTopologies.isEmpty()) {
+			// reconstruct recursively
+			for (CTopology aTp : mBranches[branchIdx].mTopologies) {
+				mBranchTopologies[branchIdx] = aTp;
+				recFormula(branchIdx + 1);
+			}
+		}
+	}
+}
