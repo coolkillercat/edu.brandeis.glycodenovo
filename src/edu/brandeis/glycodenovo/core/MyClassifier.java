@@ -2,6 +2,8 @@ package edu.brandeis.glycodenovo.core;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -10,9 +12,10 @@ import weka.classifiers.Classifier;
 public class MyClassifier {
 	ArrayList<Double> trainedWeights;
 	ArrayList<ClassificationTree> cForest;
-	private class ClassificationTree {
+	class ClassificationTree {
 		int numNodes;
 		ArrayList<CNode> cTree;
+		
 		ClassificationTree (int num) {
 			numNodes = num;
 			cTree = new ArrayList<>();
@@ -20,34 +23,231 @@ public class MyClassifier {
 				cTree.add(new CNode());
 			}
 		}
+		
+		double rootCutPoint() {
+			return cTree.get(0).cutpoint;
+		}
+		
+		int rootCutVar() {
+			return cTree.get(0).cutvar;
+		}
+		CNode getNode (int nodeID) {
+			return cTree.get(nodeID);
+		}
+		
+		void setChildren (int nodeID, int left, int right) {
+			CNode node = getNode(nodeID);
+			if (left > 0) {
+				CNode lNode = getNode(left - 1);
+				node.left = lNode;
+				lNode.parent = node;
+			}
+			if (right > 0) {
+				CNode rNode = getNode(right - 1);
+				node.right = rNode;
+				rNode.parent = node;
+			}
+		}
+		
+		void setProb (int nodeID, double left, double right) {
+			CNode node = getNode(nodeID);
+			node.lprob = left;
+			node.rprob = right;
+		}
+		
+		int toInt (CNode node) {
+			if (node == null) {
+				return -1;
+			}
+			return cTree.indexOf(node);
+		}
+		
+		CNode swim (ArrayList<Double> massFeatures) {
+			CNode currNode = cTree.get(0);
+			while (currNode.left != null && currNode.right != null) {
+				double value = massFeatures.get(currNode.cutvar);
+				if (value < currNode.cutpoint) {
+					currNode = currNode.left;
+				} else {
+					currNode = currNode.right;
+				}
+			}
+			return currNode;
+		}
+		
+		double[] getScore (ArrayList<Double> massFeatures) {
+			CNode leaf = swim(massFeatures);
+			double[] ans = new double[2];
+			ans[0] = leaf.lprob >= 0.5 ? 1 : -1 ;
+			ans[1] = leaf.rprob >= 0.5 ? 1 : -1 ;
+			return ans;
+		}
+		
+		void printTree (FileWriter filewriter) throws IOException {
+			for (int i = 0; i < cTree.size(); i++) {
+				CNode currNode = cTree.get(i);
+				filewriter.write("cutvar: " + currNode.cutvar + " cutpoing: " + currNode.cutpoint + "\n");
+				filewriter.write("lprob: " + currNode.lprob + " rprob: " + currNode.rprob + "\n");
+			}
+		}
 	}
+	
+	
 	private class CNode {
-		CNode left, right;
+		CNode left, right, parent;
 		double lprob, rprob, cutpoint;
 		int cutvar;
+		
 		CNode () {
 			lprob = rprob = 0;
 			cutpoint = -1;
 			cutvar = -1;
 		}
+		
 	}
-	MyClassifier (String rootpath) {
+	
+	
+	MyClassifier (String rootpath, char pos, char neg) {
 		if (rootpath.charAt(rootpath.length() - 1) != '\\') {
 			rootpath = rootpath + '\\';
 		}
 		Scanner sc = null;
-		char[] posSet = {'B', 'B', 'B', 'B', 'C', 'C', 'C', 'C'}; 
-		char[] negSet = {'C', 'Y', 'Z', 'O', 'B', 'Y', 'Z', 'O'};
-		for (int i = 0; i < 8; i++) {
-			String path = rootpath + "ionclassifier_" + posSet[i] + "_v_" + negSet[i] + ".txt";
-			File specFile = new File(path);
-			try {
-				sc = new Scanner(specFile);
-			} catch (FileNotFoundException e) {
-				throw new IllegalArgumentException("ionclassifier_" + posSet[i] + "_v_" + negSet[i] + ".txt doesn't exist");
-			}
-			String currentLine = sc.nextLine().trim();
-			
+		trainedWeights = new ArrayList<>();
+		cForest = new ArrayList<>();
+		String path = rootpath + "ionclassifier_" + pos + "_v_" + neg + ".txt";
+		File specFile = new File(path);
+		try {
+			sc = new Scanner(specFile);
+		} catch (FileNotFoundException e) {
+			throw new IllegalArgumentException("ionclassifier_" + pos + "_v_" + neg + ".txt doesn't exist");
 		}
+		int modelid = 0, numNodes = 0;
+		ClassificationTree currTree = null;
+		while(sc.hasNextLine()) {
+			String currentLine = sc.nextLine().trim();
+			Scanner lineSc = new Scanner(currentLine);
+			if (! lineSc.hasNext()) {
+				continue;
+			}
+			String reader = lineSc.next();
+			if (reader.equals("Model")) {
+				modelid = lineSc.nextInt() - 1;
+			} else if (reader.equals("NumNodes")) {
+				numNodes = lineSc.nextInt();
+				cForest.add(new ClassificationTree(numNodes));
+				currTree = cForest.get(modelid);
+			} else if (reader.equals("Children")) {
+				currentLine = sc.nextLine().trim();
+				lineSc = new Scanner(currentLine);
+				int currNode = 0;
+				while (!currentLine.equals("EndChildren")) {
+					int left = lineSc.nextInt();
+					int right = lineSc.nextInt();
+					//System.out.println("left " + left + "right " + right);
+					currTree.setChildren(currNode, left, right);
+					currNode++;
+					currentLine = sc.nextLine().trim();
+					lineSc = new Scanner(currentLine);
+				}
+			} else if (reader.equals("ClassProb")) {
+				currentLine = sc.nextLine().trim();
+				lineSc = new Scanner(currentLine);
+				int currNode = 0;
+				while (!currentLine.equals("EndClassProb")) {
+					double left = lineSc.nextDouble();
+					double right = lineSc.nextDouble();
+					currTree.setProb(currNode, left, right);
+					currNode++;
+					currentLine = sc.nextLine().trim();
+					lineSc = new Scanner(currentLine);
+				}
+			} else if (reader.equals("CutPoint")) {
+				currentLine = sc.nextLine().trim();
+				lineSc = new Scanner(currentLine);
+				int currNode = 0;
+				while (lineSc.hasNext()) {
+					String read = lineSc.next();
+					currTree.getNode(currNode).cutpoint = getDouble(read);
+					//System.out.println(currTree.getNode(currNode).cutpoint);
+					currNode++;
+				}
+			} else if (reader.equals("CutVar")) {
+				currentLine = sc.nextLine().trim();
+				lineSc = new Scanner(currentLine);
+				int currNode = 0;
+				while (lineSc.hasNext()) {
+					int read = lineSc.nextInt();
+					currTree.getNode(currNode).cutvar = read - 1;
+					currNode++;
+				}
+			} else if (reader.equals("TrainedWeights")) {
+				currentLine = sc.nextLine().trim();
+				lineSc = new Scanner(currentLine);
+				while (lineSc.hasNext()) {
+					double read = lineSc.nextDouble();
+					trainedWeights.add(read);
+				}
+			}
+		}
+		//printClassifier();
+	}
+	
+	void printClassifier () {
+		for (int i = 0; i < cForest.size(); i++) {
+			ClassificationTree currTree = cForest.get(i);
+			System.out.println("\nModel " + i);
+			System.out.println("\tNumNodes" + currTree.numNodes);
+			System.out.println("\tChildren");
+			for (CNode currNode : currTree.cTree) {
+				System.out.println("\t\t" + currTree.toInt(currNode.left) + " " +currTree.toInt(currNode.right));
+			}
+			System.out.println("\tClassProb");
+			for (CNode currNode : currTree.cTree) {
+				System.out.println("\t\t" + currNode.lprob + " " + currNode.rprob);
+			}
+			System.out.print("\tCutPoint\n\t\t");
+			for (CNode currNode : currTree.cTree) {
+				System.out.print(currNode.cutpoint + " ");
+			}
+			System.out.print("\n\tCutVar\n\t\t");
+			for (CNode currNode : currTree.cTree) {
+				System.out.print(currNode.cutvar + " ");
+			}
+		}
+		System.out.println("\n\nTrainedWeights");
+		for (Double weight : trainedWeights) {
+			System.out.print(weight + " ");
+		}
+	}
+	
+	private double getDouble (String s)
+	{
+		Double a;
+		try {
+			a = Double.parseDouble(s);
+		} catch(Exception e) {
+			return -1;
+		}
+		return a;
+	} 
+	
+	
+	double[] getScore (ArrayList<Double> massFeatures) {
+		double [] sum = new double[2];
+		sum[0] = sum[1] = 0;
+		for (int i = 0; i < trainedWeights.size(); i++) {
+			ClassificationTree cTree = cForest.get(i);
+			double weight = trainedWeights.get(i);
+			double[] score = cTree.getScore(massFeatures);
+			sum[0] += score[0] * weight;
+			sum[1] += score[1] * weight;
+		}
+		sum[0] /= trainedWeights.size();
+		sum[1] /= trainedWeights.size();
+		return sum;
+	}
+	
+	ClassificationTree getTree (int index) {
+		return cForest.get(index);
 	}
 }

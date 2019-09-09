@@ -126,7 +126,7 @@ public class CGlycoDeNovo {
 		}
 		while (sc.hasNextLine()) {
 			String currLine = sc.nextLine().trim();
-			System.out.println("Current Line: " + currLine);
+			//System.out.println("Current Line: " + currLine);
 			Scanner lineSc = new Scanner(currLine);
 			if (!lineSc.hasNext()) {
 				continue;
@@ -154,8 +154,8 @@ public class CGlycoDeNovo {
 				//@Todo: add CSpectrum and mComplement for these peaks later.
 				//@Todo: which is original?
 				mPeaks.add(new CPeak(peakid, complement, mass, rawMZ, rawZ, intensity));
-				System.out.println("peakid " + peakid + " complement " + complement + " mass " + mass +
-						" rawMZ " + rawMZ + " rawZ " + rawZ + " intensity " + intensity); 
+				//System.out.println("peakid " + peakid + " complement " + complement + " mass " + mass +
+				//		" rawMZ " + rawMZ + " rawZ " + rawZ + " intensity " + intensity); 
 			}
 			if (head.equals("**")) {
 				int peakid = 0;
@@ -185,8 +185,8 @@ public class CGlycoDeNovo {
 					}
 				}
 				//@Todo: build a TSS with the topologies?
-				System.out.println("Peak " + peakid + " type " + type + " formula " + formula + 
-						" peaks " + peaks.toString() + " scores " + score);
+				//System.out.println("Peak " + peakid + " type " + type + " formula " + formula + 
+				//		" peaks " + peaks.toString() + " scores " + score);
 			}
 		}
 	}
