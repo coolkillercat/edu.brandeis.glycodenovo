@@ -26,6 +26,7 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileWriter;
 import java.io.PrintStream;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -560,5 +561,40 @@ public class CSpectrum {
 		} catch (ParserConfigurationException | TransformerException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public void printmPeaks  (String savePath) throws Exception {
+		if (savePath.charAt(savePath.length() - 1) != '\\') {
+			savePath = savePath + '\\';
+		}
+		savePath = savePath + "save\\peak.txt";
+		File file = new File(savePath);
+		if (!file.exists()) {
+			file.createNewFile();
+		}
+		FileWriter filewriter = new FileWriter(file);
+		for (int i = 0; i < mPeaks.size(); i++) {
+			CPeak currPeak = mPeaks.get(i);
+			filewriter.write("Peak: " + i + " complement " + mPeaks.indexOf(currPeak.getComplementPeak()) + " mass " + currPeak.getMass() + "\n");
+		}
+		filewriter.close();
+	}
+	
+	public static void main(String[] args) {
+		 CSpectrum spec;
+		 ArrayList<CSpectrum> speca = new ArrayList<>();
+		 spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\SLeX.txt");
+		 speca.add(spec);
+		 CGlycoDeNovo glyco = new CGlycoDeNovo(5);
+		 for (CSpectrum spectrum : speca) {
+		   spectrum.protonate();
+		   spectrum.mergePeaks(0.001);	
+		   spectrum.addComplementaryIons();
+		   glyco.interpretPeaks(spectrum);
+		   glyco.reconstructFormulas();
+		 }
+		 CPeak test = spec.mPeaks.get(3);
+		 System.out.println(test.getComplementPeak());
+		 System.out.println(spec.getPrecursorMZ());
 	}
 }

@@ -227,11 +227,11 @@ public class CIonclassifier {
 				b = mMyClassifier.get(vs_O).getScore(testVectors.getVector(ion, k));
 				ws[3] = b[1];
 				ionScoreMap.setScore(ion, key, min(ws));
-				/*
+				
 				System.out.println("ws: " + ws[0] + " "+ ws[1] + " "+ ws[2] + " "+ ws[3]);
 				System.out.println("ion: " + ion + " key: " + key);
 				System.out.println("score: " + min(ws));
-				*/
+				
 				if (mEnableX15) {
 					if (ion == 'B') {
 						for (int  i : idxX15_B) {
@@ -321,7 +321,7 @@ public class CIonclassifier {
 	}
 
 	public double[][][][] rank_candidates(ArrayList<CSpectrum> spectra) throws Exception {
-		ArrayList<Object> output = (ArrayList<Object>) extract_data(spectra, mMassFeatures, null, 0.005, mUseOriginalPeaks, false);
+		ArrayList<Object> output = (ArrayList<Object>) extract_data(spectra, mMassFeatures, null, 0.01, mUseOriginalPeaks, false);
 		DataVectors vectors = (DataVectors) output.get(0);
 		DataSignals signals = (DataSignals) output.get(1);
 		IonScoreMap ionScoreMap = predict_ions(vectors, signals);
@@ -374,6 +374,7 @@ public class CIonclassifier {
 					}
 					tp.mScore = sum;
 				}
+				//Collections.sort(TSS.mTopologies);
 			}
 		}
 		/*for (double value : vectors.getVector('B', 0)) {
@@ -491,18 +492,12 @@ public class CIonclassifier {
 	   ArrayList<CSpectrum> speca = new ArrayList<>();
 	   //CGlycoDeNovo glyco = new CGlycoDeNovo("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\rec.LNFP V.full.txt");
 	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\spectrum1.txt");
-	   //speca.add(spec);
 	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\spectrum2.txt");
-	   //speca.add(spec);
-	   
-	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man4_Peak2_OLD.txt");
-	   //speca.add(spec);
-	   
+	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man4_Peak1_OLD.txt");  
 	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man4_Peak3_OLD.txt");
-	   //speca.add(spec);
-	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\SLeA.txt");
+	  // speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\SLeX.txt");
 	   speca.add(spec);
-	   
 	   
 	   
 	   CIonclassifier c = new CIonclassifier();
@@ -515,6 +510,7 @@ public class CIonclassifier {
 		   glyco.interpretPeaks(spectrum);
 		   glyco.reconstructFormulas();
 	   }
+	   spec.printmPeaks("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\");
 	   double[][][][] result = c.rank_candidates(speca);
 	   for (int i = 0; i < result.length; i++) {
 		   for (int j = 0; j < result[i].length; j++) {
