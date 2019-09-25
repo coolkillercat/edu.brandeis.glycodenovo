@@ -25,6 +25,8 @@ public class CIonclassifier {
     public static boolean mUseOriginalPeaks = false;
     public static boolean mUseComplementFlag = false;
     public static boolean mEnableX15 = false;
+    
+    public static double mKeep_percentage = 0.9;
 
 	public static List<Object> extract_data (ArrayList<CSpectrum> spectra, ArrayList<Double> massFeatures,
 		ArrayList<Double> massBound, double massAccuracy, boolean useOriginalPeak, boolean includeREM) {
@@ -118,6 +120,7 @@ public class CIonclassifier {
 						c3.add((peakComplements.get(i)) ? (double)1 : (double)0);
 					}
 					ArrayList<ArrayList<Double>> context = new ArrayList<>();
+					System.out.println("dataSignals iontype: " + iontype + " k: " + k);
 					context.add(c1); context.add(c2); context.add(c3);
 					dataSignals.addlast(iontype, pMass, k, peaklist.get(k).getComplementPeak(), ((ArrayList<Double>)peakIntensities.get(0)).get(k),
 					context, s,	specU.getPrecursorMZ(), hasRequestREM, specU);
@@ -140,10 +143,12 @@ public class CIonclassifier {
 				for (int m = 0; m < dataSignals.getContext(iontype, k).get(0).size(); m++) {
 					double d, idx;
 					double[] ans;
+					System.out.print("iontype: " + iontype + " k " + k + " m " + m + " ");
 					ans = min(massFeatures, dataSignals.getContext(iontype, k).get(0).get(m));
 					d = ans[0];
 					idx = ans[1];
 					if (d < massAccuracy + 0.001) {
+						System.out.println("Step in");
 						testVectors.getVector(iontype, k).set((int)idx, 1.0);
                         testVectors.getVector(iontype, k).set((int)idx + numFeatures, dataSignals.getContext(iontype, k).get(1).get(m));
 					}
@@ -179,6 +184,7 @@ public class CIonclassifier {
 			i++;
 		}
 		double[] ans = {d, idx};
+		System.out.println("context: " + contextM + " d " + d + " massfeature " + massFeatures.get((int)idx));
 		return ans;
 	}
 
@@ -321,7 +327,7 @@ public class CIonclassifier {
 	}
 
 	public double[][][][] rank_candidates(ArrayList<CSpectrum> spectra) throws Exception {
-		ArrayList<Object> output = (ArrayList<Object>) extract_data(spectra, mMassFeatures, null, 0.01, mUseOriginalPeaks, false);
+		ArrayList<Object> output = (ArrayList<Object>) extract_data(spectra, mMassFeatures, null, mMassAccuracy, mUseOriginalPeaks, false);
 		DataVectors vectors = (DataVectors) output.get(0);
 		DataSignals signals = (DataSignals) output.get(1);
 		IonScoreMap ionScoreMap = predict_ions(vectors, signals);
@@ -335,14 +341,16 @@ public class CIonclassifier {
 				ICScores[s] = new double[TSS.mTopologies.size()][][];
 				for (int t = 0; t < TSS.mTopologies.size(); t++) {
 					CTopology tp = TSS.mTopologies.get(t);
-					int len = tp.mSupportPeaks.size() - 1;
+					int len = tp.mSupportPeaks.size();
 					ICScores[s][t] = new double[len][4];
 					double[] weights = new double[len];
-					for (int m = 0; m < len; m++) {
-						double peakID = peaklist.indexOf(tp.mSupportPeaks.get(m));
+					int m = -1;
+					for (CPeak peak : tp.getSupportPeaks()) {
+						m++;
+						double peakID = peaklist.indexOf(peak);
 						ICScores[s][t][m][0] = peakID;
 						double type = 0;
-						for (CTopologySuperSet peakTSS : peaklist.get((int)peakID).getInferredSuperSets()) {
+						for (CTopologySuperSet peakTSS : peak.getInferredSuperSets()) {
 							//@TODO: mFormulas issue
 							if (peakTSS.mTopologies.isEmpty()) {
 								continue;
@@ -350,21 +358,21 @@ public class CIonclassifier {
 							//@TODO: negative mComplement
 							type = peakTSS.mTargetPeaks.get((int)peakID);
 						}
-						ICScores[s][t][m][1] = peaklist.indexOf(peaklist.get((int)peakID).getComplementPeak());
+						ICScores[s][t][m][1] = peaklist.indexOf(peak.getComplementPeak());
 						ICScores[s][t][m][2] = type;
 						int key = s * 10000 + (int)peakID;
 						if (type == 1 || type == -1) {
 							weights[m] = ionScoreMap.getScore('B', key);
 							ArrayList<Integer> score = new ArrayList<>();
-							score.add(0); score.add(0);
+							score.add(0); score.add(0); 
 							score.set(0, (int)weights[m]);
-							peaklist.get((int)peakID).setInferredScores(score);
+							peak.setInferredScores(score);
 						} else if (type == 2 || type == -2) {
 							weights[m] = ionScoreMap.getScore('C', key);
 							ArrayList<Integer> score = new ArrayList<>();
 							score.add(0); score.add(0);
 							score.set(1, (int)weights[m]);
-							peaklist.get((int)peakID).setInferredScores(score);
+							peak.setInferredScores(score);
 						}
 						ICScores[s][t][m][3] = weights[m];
 					}
@@ -403,8 +411,9 @@ public class CIonclassifier {
 		ArrayList<Double> zscores = new ArrayList<>();
 		if (peakIDs.isEmpty()) {
 			ArrayList<Double> sub = (ArrayList<Double>) intensities.subList(1, intensities.size() - 1);
-			m = mean(sub);
-			s = std(sub);
+			double[] ans = robust_mean_std(sub);
+			m = ans[0];
+			s = ans[1];
 			for (Double intensity : intensities) {
 				zscores.add((intensity - m) / s);
 			}
@@ -414,8 +423,9 @@ public class CIonclassifier {
 			for (int i = 0; i < peakIDs.size(); i++) {
 				sub.add(intensities.get(peakIDs.get(i)));
 			}
-			m = mean(sub);
-			s = std(sub);
+			double[] ans = robust_mean_std(sub);
+			m = ans[0];
+			s = ans[1];
 			for (Double intensity : intensities) {
 				zscores.add((intensity - m) / s);
 			}
@@ -446,6 +456,50 @@ public class CIonclassifier {
 			square += (sample - avg) * (sample - avg);
 		}
 		return Math.sqrt(square/(data.size() - 1));
+	}
+	
+	private static double median (ArrayList<Double> data) {
+		Collections.sort(data);
+		if (data.size() % 2 == 1) return data.get(data.size() / 2);
+		return (data.get(data.size() / 2) + data.get(data.size() / 2 - 1)) / 2;
+	}
+	
+	private static double[] robust_mean_std(ArrayList<Double> data) {
+		double keep_percentage = CIonclassifier.mKeep_percentage;
+		int num = data.size();
+		double m = median(data);
+		ArrayList<Double> squareerr = new ArrayList<>();
+		for (Double x : data) {
+			squareerr.add((x - m) * (x - m));
+		}
+		double s = Math.sqrt(median(squareerr));
+		double preM = m - 10000;
+		double preS = s - 10000;
+		ArrayList<Double> preSubSet = new ArrayList<>(data);
+		while (Math.abs(preM - m) > Math.abs(preM * 0.01) || Math.abs(preS - s) > preS * 0.01) {
+			ArrayList<Double> subSet = new ArrayList<>();
+			for (Double x : preSubSet) {
+				if (Math.abs(x - m) <= 3 * s) {
+					subSet.add(x);
+				}
+			}
+			if (subSet.size() <= num * keep_percentage) {
+				break;
+			}
+			preM = m;
+			preS = s;
+			m = median(subSet);
+			ArrayList<Double> y = new ArrayList<>();
+			for (Double x : subSet) {
+				y.add((x - m) * (x - m));
+			}
+		    s = Math.sqrt(median(y));
+		    preSubSet = subSet;
+		}
+		double[] ans = new double[2];
+		ans[0] = mean(preSubSet);
+		ans[1] = std(preSubSet);
+		return ans;
 	}
 
 	public static void setClassifier(String rootpath) throws Exception {
@@ -496,10 +550,52 @@ public class CIonclassifier {
 	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man4_Peak1_OLD.txt");  
 	   //spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man4_Peak3_OLD.txt");
 	  // speca.add(spec);
-	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\SLeX.txt");
+	   /*
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\A2S2.txt");
 	   speca.add(spec);
-	   
-	   
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man5_Peak1.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man5_Peak2.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man5_Peak3.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man6_Peak1.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man6_Peak2.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man6_Peak3.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man7_Peak1.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man7_Peak2.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man7_Peak3.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man7_Peak4.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man7_Peak5.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man8_Peak1.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man8_Peak2.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man8_Peak3.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\HighMan_PGC.Man9.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man5.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\Man6.txt");
+	   speca.add(spec);
+	   */
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\NA2F.txt");
+	   speca.add(spec);
+	   /*
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\NG1A2F.txt");
+	   speca.add(spec);
+	   spec = new CSpectrum("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\NGA2F.txt");
+	   speca.add(spec);
+	   */
 	   CIonclassifier c = new CIonclassifier();
 	   CGlycoDeNovo glyco = new CGlycoDeNovo(5);
 	   long starTime=System.currentTimeMillis();
@@ -513,22 +609,57 @@ public class CIonclassifier {
 	   spec.printmPeaks("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\");
 	   double[][][][] result = c.rank_candidates(speca);
 	   for (int i = 0; i < result.length; i++) {
+		   String scoreMapPath = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save\\scoremap_" + speca.get(i).getFilename() + ".txt";
+		   File file = new File(scoreMapPath);
+			if (!file.exists()) {
+				file.createNewFile();
+			}
+			FileWriter filewriter = new FileWriter(file);
 		   for (int j = 0; j < result[i].length; j++) {
 			   for (int k = 0; k < result[i][j].length; k++) {
 				   for (int l = 0; l < result[i][j][k].length; l++) {
-					   System.out.print(result[i][j][k][l]+" ");
+					   filewriter.write(result[i][j][k][l]+" ");
 				   }
-				   System.out.println();
+				   filewriter.write("\n");
 			   }
 			   ArrayList<CPeak> peaklist = (ArrayList<CPeak>) speca.get(i).getPeakList();
 			   CTopologySuperSet TSS = peaklist.get(peaklist.size() - 1).getInferredSuperSets().get(0);
 			   CTopology tp = TSS.mTopologies.get(j);
+			   filewriter.write("topology score: " + tp.mScore + "\n");
+			   filewriter.write("topology formula: " + tp.getFormula() + "\n");
+			   filewriter.write("\n");
+		   }
+		   filewriter.close();
+	   }
+	   for (int i = 0; i < result.length; i++) {
+		   ArrayList<CPeak> peaklist = (ArrayList<CPeak>) speca.get(i).getPeakList();
+		   CTopologySuperSet TSS = peaklist.get(peaklist.size() - 1).getInferredSuperSets().get(0);
+		   Collections.sort(TSS.mTopologies, new Comparator<CTopology>() {
+			   @Override
+			   public int compare(CTopology t1, CTopology t2) {
+				   double dscore = t1.mScore - t2.mScore;
+				   return (int) -Math.signum(dscore);
+			   }
+		   });
+		   System.out.println("*" + speca.get(i).getFilename());
+		   System.out.println(peaklist.get(peaklist.size() - 1).getInferredSuperSets().size());
+		   for (int j = 0; j < result[i].length; j++) {
+			   CTopology tp = TSS.mTopologies.get(j);
 			   System.out.println("topology score: " + tp.mScore);
 			   System.out.println("topology formula: " + tp.getFormula());
+			   System.out.print("support peaks: ");
+			   for (CPeak peak : tp.getSupportPeaks()) {
+				   System.out.print(peaklist.indexOf(peak) + " ");
+			   }
+			   System.out.println();
+			   System.out.println("topology type: " + tp.mType);
 			   System.out.println();
 		   }
-		   System.out.println();
 	   }
+	   
+	   
+	   
+	   
 	    long endTime=System.currentTimeMillis();
 		long Time=endTime-starTime;
 		System.out.println("time: "+((double)Time/1000.0) + "s");

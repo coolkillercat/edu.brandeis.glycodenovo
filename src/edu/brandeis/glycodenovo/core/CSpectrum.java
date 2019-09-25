@@ -447,6 +447,10 @@ public class CSpectrum {
 			}
 		}
 	}
+	
+	public String getFilename() {
+		return mFilename;
+	}
 
 	/**
 	 * @param resultFilename
@@ -575,7 +579,11 @@ public class CSpectrum {
 		FileWriter filewriter = new FileWriter(file);
 		for (int i = 0; i < mPeaks.size(); i++) {
 			CPeak currPeak = mPeaks.get(i);
-			filewriter.write("Peak: " + i + " complement " + mPeaks.indexOf(currPeak.getComplementPeak()) + " mass " + currPeak.getMass() + "\n");
+			filewriter.write("Peak: " + i + " complement " + mPeaks.indexOf(currPeak.getComplementPeak()) + " mass " + currPeak.getMass() + " type: ");
+			for (CTopologySuperSet TSS : currPeak.getInferredSuperSets()) {
+				filewriter.write(TSS.mType + " ");
+			}
+			filewriter.write("\n");
 		}
 		filewriter.close();
 	}

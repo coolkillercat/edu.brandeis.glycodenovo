@@ -102,6 +102,10 @@ public class CTopology implements Comparable<CTopology> {
 				ctp.getDescendantGWAFormula(descendant);
 	}
 	
+	public ArrayList<CPeak> getSupportPeaks() {
+		return mSupportPeaks;
+	}
+	
 	@Override
 	public int compareTo( CTopology o ) {
 		int temp = this.mType.compareTo( o.mType );

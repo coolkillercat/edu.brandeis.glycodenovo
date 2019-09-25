@@ -6,10 +6,12 @@ import weka.core.Instances;
 import weka.core.converters.ArffLoader;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Scanner;
 
 public class DataVectors {
         public static final String tempaddress = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\template.arff";
@@ -81,5 +83,63 @@ public class DataVectors {
         		}
         	}
         	
+        }
+        
+        public static void testSameVectors(int b, int c) {
+        	
+        	Scanner scj = null, scm = null;
+    		/*File specFile = new File(specFilename);
+    		try {
+    			sc = new Scanner(specFile);
+    		} catch (FileNotFoundException e) {
+    			throw new IllegalArgumentException("No such file");
+    		}*/
+        	for (int i = 0; i < b; i++) {
+        		String fileNameJ = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save\\B" + i + ".txt";
+        		String fileNameM = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save\\matlab_B" + (i+1) + ".txt";
+        		File fileJ = new File(fileNameJ);
+        		File fileM = new File(fileNameM);
+        		try {
+        			scj = new Scanner(fileJ);
+        			scm = new Scanner(fileM);
+        		} catch (FileNotFoundException e) {
+        			throw new IllegalArgumentException("No such file");
+        		}
+        		int m = 0;
+        		while(scj.hasNextDouble() && scm.hasNextDouble()) {
+        			double dJ = scj.nextDouble();
+        			double dM = scm.nextDouble();
+        			if (Math.abs(dJ - dM) > 0.000000000001) {
+        				System.out.println("wrong attributeB i: " + i + " m: " + m + " java: " + dJ + " matlab: " + dM);
+        			}
+        			m++;
+        		}
+        	}
+        	for (int i = 0; i < c; i++) {
+        		String fileNameJ = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save\\C" + i + ".txt";
+        		String fileNameM = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save\\matlab_C" + (i+1) + ".txt";
+        		File fileJ = new File(fileNameJ);
+        		File fileM = new File(fileNameM);
+        		try {
+        			scj = new Scanner(fileJ);
+        			scm = new Scanner(fileM);
+        		} catch (FileNotFoundException e) {
+        			throw new IllegalArgumentException("No such file");
+        		}
+        		int m = 0;
+        		while(scj.hasNextDouble() && scm.hasNextDouble()) {
+        			double dJ = scj.nextDouble();
+        			double dM = scm.nextDouble();
+        			if (Math.abs(dJ - dM) > 0.000000000001) {
+        				System.out.println("wrong attributeC i: " + i + " m: " + m + " java: " + dJ + " matlab: " + dM);
+        			}
+        			m++;
+        		}
+        	}
+        }
+        
+        public static void main(String[] args) {
+        	testSameVectors(5, 5);
+        	System.out.println("testSameVector complete");
         }
 }
