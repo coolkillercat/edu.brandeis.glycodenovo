@@ -100,6 +100,7 @@ public class CGlycoDeNovo {
 	private CTopologySuperSet[] mCurrentBranches; // TSS Branches
 	// initialize
 
+	//@TODO: haven't finished
 	public CGlycoDeNovo (String fileName) {
 		mPeaks = new ArrayList<>();
 		Scanner sc = null;
@@ -204,6 +205,12 @@ public class CGlycoDeNovo {
 		Arrays.fill(mCompositionCountThreshold, 8000);
 	}
 
+	public void setMaxBranchNum( int num )
+	{
+		if ( num > 1 && num < 5 )
+			this.mMaxBranchingNum = num;
+	}
+	
     private boolean acceptable_monosaccharide( String monoClass ) {
     	if ( this.mPossibleMonosaccharideClasses == null || this.mPossibleMonosaccharideClasses.size() == 0 )
     		return true;
@@ -662,19 +669,44 @@ public class CGlycoDeNovo {
 		// record unitIndexes and whether each is a minusH result
 		ArrayList<Integer> unitIndexes = new ArrayList<Integer>();
 		ArrayList<Integer> minusHCount = new ArrayList<Integer>();
+		ArrayList<Double> lowMasses = new ArrayList<Double>();
+		ArrayList<Double> highMasses = new ArrayList<Double>();
 		double theoreticalMassLow, theoreticalMassHigh;
 		CTopologySet newTS;
+		CMonosaccharide newUnit;
 
 		// B2B: try to interpret as a B-ion by adding one monosaccharide to a B-ion
 		for (int k = 0; k < mDelta.B2B.mass.length; k++) {
+			// Begin 2019/09/15. Move from "for (int a = 0; a < unitIndexes.size(); a++)" to here
+			newUnit = mDelta.B2B.unit[k];
+			if ( !this.acceptable_monosaccharide( newUnit.mClass ) || (newUnit.mClassID == 2 && !mLeafPeak) || 
+					mCompositionCountThreshold[newUnit.mClassID - 1] < 1)
+				continue;
+			// End 2019/09/15. Move from "for (int a = 0; a < unitIndexes.size(); a++)" to here
+			
 			theoreticalMassLow = mDelta.B2B.mass[k] + massCompensationLow;
 			theoreticalMassHigh = mDelta.B2B.mass[k] + massCompensationHigh;
-			if (mCurrentTargetMassHigh > theoreticalMassLow && mCurrentTargetMassLow < theoreticalMassHigh) {
+			// Begin 2019/09/15. Replaced by the conditional check below.
+			// if (mCurrentTargetMassHigh > theoreticalMassLow && mCurrentTargetMassLow < theoreticalMassHigh )
+			// End 2019/09/15.
+			if ( this.mCurrentTargetMassHigh > theoreticalMassLow && this.mCurrentTargetMassLow < theoreticalMassHigh ) {
 				unitIndexes.add(k);
 				minusHCount.add(0);
+				lowMasses.add( theoreticalMassLow );
+				highMasses.add( theoreticalMassHigh );
+			}
+			else if (mCheckMinus2H) { // 2019/09/15. Move from below to here
+				if ( this.mCurrentTargetMassHigh + CMass.H2 > theoreticalMassLow
+					&& this.mCurrentTargetMassLow + CMass.H2 < theoreticalMassHigh ) {
+					unitIndexes.add(k);
+					minusHCount.add(2);
+					lowMasses.add( theoreticalMassLow );
+					highMasses.add( theoreticalMassHigh );
+				}
 			}
 		}
 		
+		/* 2019/09/15. Moved to the above. See "else if (mCheckMinus2H) ..."
 		// if allow to check "-2H", search for results of adding "2H" to the current peak
 		if (mCheckMinus2H) {
 			for (int k = 0; k < mDelta.B2B.mass.length; k++) {
@@ -687,13 +719,30 @@ public class CGlycoDeNovo {
 				}
 			}
 		}
+		*/
 		
+		int unitID, countH;
+		String ionType;
+		for (int a = 0; a < unitIndexes.size(); a++) {
+			unitID = unitIndexes.get(a);
+			countH = minusHCount.get(a);
+			if (mFinalPeak)
+				ionType = "T";
+			else
+				ionType = "B";
+			newTS = new CTopologySet( ionType, mCurrentTargetMass, lowMasses.get(a), highMasses.get(a),
+								mDelta.B2B.unit[unitID], mCurrentBranches, this, countH );
+			insertIntoCurrentTSS( newTS );
+			result = 1;
+		}
+		
+		/* 2019/09/15. Simplified as the above.
 		int unitID, countH;
 		double massH = 0;
 		String ionType;
 		for (int a = 0; a < unitIndexes.size(); a++) {
 			unitID = unitIndexes.get(a);
-			CMonosaccharide newUnit = mDelta.B2B.unit[unitID];
+			newUnit = mDelta.B2B.unit[unitID];
 			double tempMassLow = mDelta.B2B.mass[unitID] + massCompensationLow;
 			double tempMassHigh = mDelta.B2B.mass[unitID] + massCompensationHigh;
 			if ( !this.acceptable_monosaccharide( newUnit.mClass ) || (newUnit.mClassID == 2 && !mLeafPeak) || 
@@ -713,6 +762,8 @@ public class CGlycoDeNovo {
 			insertIntoCurrentTSS( newTS );
 			result = 1;
 		}
+		*/
+
 		boolean failed = (unitIndexes.size() == 0);
 
 		
@@ -720,16 +771,37 @@ public class CGlycoDeNovo {
 		if (mTryCIon) {
 			unitIndexes.clear();
 			minusHCount.clear();
+			lowMasses.clear();
+			highMasses.clear();
 			
 			for (int k = 0; k < mDelta.B2C.mass.length; k++) {
+				// Begin 2019/09/15. Move from "for (int a = 0; a < unitIndexes.size(); a++)" to here
+				newUnit = mDelta.B2C.unit[k];
+				if ( !this.acceptable_monosaccharide( newUnit.mClass ) || (newUnit.mClassID == 2 && !mLeafPeak) || 
+						mCompositionCountThreshold[newUnit.mClassID - 1] < 1)
+					continue;
+				// End 2019/09/15. Move from "for (int a = 0; a < unitIndexes.size(); a++)" to here
+
 				theoreticalMassLow = mDelta.B2C.mass[k] + massCompensationLow;
 				theoreticalMassHigh = mDelta.B2C.mass[k] + massCompensationHigh;
 				if (mCurrentTargetMassHigh > theoreticalMassLow && mCurrentTargetMassLow < theoreticalMassHigh) {
 					unitIndexes.add(k);
 					minusHCount.add(0);
+					lowMasses.add( theoreticalMassLow );
+					highMasses.add( theoreticalMassHigh );
+				}
+				else if (mCheckMinus2H) { // 2019/09/15 Move from below to here
+					if ( this.mCurrentTargetMassHigh + CMass.H2 > theoreticalMassLow
+						&& this.mCurrentTargetMassLow + CMass.H2 < theoreticalMassHigh ) {
+						unitIndexes.add(k);
+						minusHCount.add(2);
+						lowMasses.add( theoreticalMassLow );
+						highMasses.add( theoreticalMassHigh );
+					}
 				}
 			}
 			
+			/* 2019/09/15. Moved to the above. See "else if (mCheckMinus2H) ..."
 			// if allow to check "-2H", search for results of adding "2H" to the current peak
 			if (mCheckMinus2H) {
 				for (int k = 0; k < mDelta.B2B.mass.length; k++) {
@@ -742,10 +814,23 @@ public class CGlycoDeNovo {
 					}
 				}
 			}
+			*/
 
 			for (int a = 0; a < unitIndexes.size(); a++) {
 				unitID = unitIndexes.get(a);
-				CMonosaccharide newUnit = mDelta.B2C.unit[unitID];
+				countH = minusHCount.get(a);
+				newTS = new CTopologySet( "C", mCurrentTargetMass, 
+									lowMasses.get(a) - CMass.H2O, highMasses.get(a) - CMass.H2O, // use its B-ion mass that help group topologysets and facilitate reconstruction.
+									mDelta.B2C.unit[unitID], mCurrentBranches, this, countH );
+				insertIntoCurrentTSS( newTS );
+				result = 1;
+			}
+			
+			/*
+			double massH;
+			for (int a = 0; a < unitIndexes.size(); a++) {
+				unitID = unitIndexes.get(a);
+				newUnit = mDelta.B2C.unit[unitID];
 				double tempMassLow = mDelta.B2C.mass[unitID] + massCompensationLow;
 				double tempMassHigh = mDelta.B2C.mass[unitID] + massCompensationHigh;
 				if ( !this.acceptable_monosaccharide( newUnit.mClass ) || (newUnit.mClassID == 2 && !mLeafPeak) || 
@@ -761,6 +846,7 @@ public class CGlycoDeNovo {
 				insertIntoCurrentTSS( newTS );
 				result = 1;
 			}
+			*/
 		}
 		
 		failed = failed && (unitIndexes.size() == 0);
@@ -781,6 +867,8 @@ public class CGlycoDeNovo {
 			}
 			unitIndexes.clear();
 			minusHCount.clear();
+			lowMasses.clear();
+			highMasses.clear();
 			
 			// B2B with gap
 			for (int k = 0; k < mDelta2.B2B.len; k++) {
@@ -789,9 +877,21 @@ public class CGlycoDeNovo {
 				if (mCurrentTargetMassHigh > theoreticalMassLow && mCurrentTargetMassLow < theoreticalMassHigh) {
 					unitIndexes.add(k);
 					minusHCount.add(0);
+					lowMasses.add( theoreticalMassLow );
+					highMasses.add( theoreticalMassHigh );
+				}
+				else if (mCheckMinus2H) {
+					if (mCurrentTargetMassHigh + CMass.H2 > theoreticalMassLow
+						&& mCurrentTargetMassLow + CMass.H2 < theoreticalMassHigh) {
+						unitIndexes.add(k);
+						minusHCount.add(2);
+						lowMasses.add( theoreticalMassLow );
+						highMasses.add( theoreticalMassHigh );
+					}
 				}
 			}
 			
+			/* 2019/09/15. Moved to the above. See "else if (mCheckMinus2H) ..."
 			// if allow to check "-2H", search for results of adding "2H" to the current peak
 			if (mCheckMinus2H) {
 				for (int k = 0; k < mDelta2.B2B.len; k++) {
@@ -801,11 +901,15 @@ public class CGlycoDeNovo {
 							&& mCurrentTargetMassLow + CMass.H2 < theoreticalMassHigh) {
 						unitIndexes.add(k);
 						minusHCount.add(2);
+						lowMasses.add( theoreticalMassLow );
+						highMasses.add( theoreticalMassHigh );
 					}
 				}
 			}
+			*/
 			
 			CMonosaccharide newUnit1, newUnit2;
+			double massH;
 			for (int a = 0; a < unitIndexes.size(); a++) {
 				unitID = unitIndexes.get(a);
 				newUnit1 = mDelta2.B2B.unit[unitID][0];
@@ -813,8 +917,8 @@ public class CGlycoDeNovo {
 					continue;
 				newUnit2 = mDelta2.B2B.unit[unitID][1];
 				
-				double tempMassLow = mDelta2.B2B.mass[unitID] + massCompensationLow;
-				double tempMassHigh = mDelta2.B2B.mass[unitID] + massCompensationHigh;
+				//double tempMassLow = mDelta2.B2B.mass[unitID] + massCompensationLow;
+				//double tempMassHigh = mDelta2.B2B.mass[unitID] + massCompensationHigh;
 
 				countH = minusHCount.get(a);
 	            massH = countH * CMass.H;
@@ -823,20 +927,35 @@ public class CGlycoDeNovo {
 				else
 					ionType = "B";
 
+				newTS = new CTopologySet( ionType, mCurrentTargetMass, 
+										lowMasses.get(a), highMasses.get(a),
+										newUnit2, newUnit1, mCurrentBranches, this, countH );
+				
+				/* 2019/09/16. Replaced by the above
 				newTS = new CTopologySet( ionType, mCurrentTargetMass,
 										Math.max(tempMassLow, mCurrentTargetMassLow + massH),
 										Math.min(tempMassHigh, mCurrentTargetMassHigh + massH), 
 										newUnit2, newUnit1, mCurrentBranches, this, countH );
+				*/
+				
 				insertIntoCurrentTSS(newTS);
 				result = 1;
 				
-				for (int b = 0; b < 4; b++) {
-					if (mCurrentBranches[b] == null)
+				// loop through mCurrentBranches and add the gap to each branch to create a new topologyset.
+				for (int idxGapInBranch = 0; idxGapInBranch < 4; idxGapInBranch++) { // b indicate "gapInBranch"
+					if (mCurrentBranches[idxGapInBranch] == null)
 						break;
+					
+					newTS = new CTopologySet( ionType, mCurrentTargetMass, 
+							lowMasses.get(a), highMasses.get(a),
+							newUnit2, newUnit1, idxGapInBranch, mCurrentBranches, this, countH );
+					/* 2019/09/16. Replaced by the above
 					newTS = new CTopologySet( ionType, mCurrentTargetMass,
 							Math.max(tempMassLow, mCurrentTargetMassLow + massH),
 							Math.min(tempMassHigh, mCurrentTargetMassHigh + massH), 
-							newUnit2, newUnit1, b, mCurrentBranches, this, countH );
+							newUnit2, newUnit1, idxGapInBranch, mCurrentBranches, this, countH );
+					*/
+					
 					insertIntoCurrentTSS(newTS);
 				}
 			}
@@ -845,14 +964,29 @@ public class CGlycoDeNovo {
 			if (mTryCIon && !mFinalPeak) {
 				unitIndexes.clear();
 				minusHCount.clear();
+				lowMasses.clear();
+				highMasses.clear();
+
 				for (int k = 0; k < mDelta2.B2C.len; k++) {
 					theoreticalMassLow = mDelta2.B2C.mass[k] + massCompensationLow;
 					theoreticalMassHigh = mDelta2.B2C.mass[k] + massCompensationHigh;
 					if (mCurrentTargetMassHigh > theoreticalMassLow && mCurrentTargetMassLow < theoreticalMassHigh ) {
 						unitIndexes.add(k);
 						minusHCount.add(0);
+						lowMasses.add( theoreticalMassLow );
+						highMasses.add( theoreticalMassHigh );
+					}
+					else if (mCheckMinus2H) {
+						if (mCurrentTargetMassHigh - CMass.H2 > theoreticalMassLow && mCurrentTargetMassLow - CMass.H2 < theoreticalMassHigh) {
+							unitIndexes.add(k);
+							minusHCount.add(2);
+							lowMasses.add( theoreticalMassLow );
+							highMasses.add( theoreticalMassHigh );
+						}
 					}
 				}
+				
+				/* 2019/09/16. Moved to the above see "else if (mCheckMinus2H)"
 				if (mCheckMinus2H) {
 					for (int k = 0; k < mDelta2.B2C.len; k++) {
 						theoreticalMassLow = mDelta2.B2C.mass[k] + massCompensationLow;
@@ -863,6 +997,7 @@ public class CGlycoDeNovo {
 						}
 					}
 				}
+				*/
 
 				for (int a = 0; a < unitIndexes.size(); a++) {
 					unitID = unitIndexes.get(a);
@@ -871,25 +1006,38 @@ public class CGlycoDeNovo {
 						continue;
 
 					newUnit2 = mDelta2.B2C.unit[unitID][1];
+					
+					/* 2019/09/16. Replaced by lowMasses and highMasses
 					double tempMassLow = mDelta2.B2C.mass[unitID] + massCompensationLow;
 					double tempMassHigh = mDelta2.B2C.mass[unitID] + massCompensationHigh;
+					*/
 
 					countH = minusHCount.get(a);
-		            massH = countH * CMass.H;
+		            //massH = countH * CMass.H;
+					newTS = new CTopologySet( "C", mCurrentTargetMass, 
+							lowMasses.get(a) - CMass.H2O, highMasses.get(a) - CMass.H2O, // Although it is C-ion, we use its B-ion mass in interpreting peaks.
+							newUnit2, newUnit1, mCurrentBranches, this, countH );
+					/* 2019/09/16. Replaced by the above
 					newTS = new CTopologySet("C", mCurrentTargetMass,
 							Math.max(tempMassLow, mCurrentTargetMassLow + massH) - CMass.H2O, // Although it is C-ion, we use its B-ion mass in interpreting peaks.
 							Math.min(tempMassHigh, mCurrentTargetMassHigh + massH) - CMass.H2O, 
 							newUnit2, newUnit1, mCurrentBranches, this, countH);
+					*/
 					insertIntoCurrentTSS( newTS );
 					result = 1;
 
 					for (int idxGapInBranch = 0; idxGapInBranch < 4; idxGapInBranch++) {
 						if (mCurrentBranches[idxGapInBranch] == null)
 							break;
+						newTS = new CTopologySet( "C", mCurrentTargetMass, 
+								lowMasses.get(a) - CMass.H2O, highMasses.get(a) - CMass.H2O,
+								newUnit2, newUnit1, idxGapInBranch, mCurrentBranches, this, countH );
+						/* 2019/09/16. Replaced by the above
 						newTS = new CTopologySet("C", mCurrentTargetMass,
 								Math.max(tempMassLow, mCurrentTargetMassLow + massH) - CMass.H2O,
 								Math.min(tempMassHigh, mCurrentTargetMassHigh + massH) - CMass.H2O, 
 								newUnit2, newUnit1, idxGapInBranch, mCurrentBranches, this, countH );
+						*/
 						insertIntoCurrentTSS( newTS );
 					}
 				}

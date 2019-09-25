@@ -35,7 +35,6 @@ public class CPeak extends Peak {
 	
 	// The peak whose protonated mass is complement to this object.
 	private CPeak 		mComplementPeak = null;
-	private int mComplement;
 	
 	// Reconstruction set for this peak
 	private ArrayList<CTopologySuperSet> 	mInferredSuperSets = new ArrayList<>(); 
@@ -46,9 +45,9 @@ public class CPeak extends Peak {
 	private ArrayList<Integer> 				mInferredScores;
 
 	// This constructor doesn't fully construct CPeak. Have to set mSpectrum and mOriginal/mComplementPeak later.
+	// @TODO: finish this if want to reconstruct
 	public CPeak (int peakid, int complement, double mass, double rawMZ, int rawZ, double intensity) {
 		mID = peakid;
-		mComplement = complement;
 		mMass = mass;
 		mRawMZ = rawMZ;
 		mRawZ = rawZ;
@@ -87,7 +86,7 @@ public class CPeak extends Peak {
 		this.mMassHighBound = massHigh;
 		this.mComplementPeak = complement;
 		this.mIntensity = intensity;
-		this.mOriginalPeak = this;
+		this.mOriginalPeak = complement;
 		super.setIntensity(intensity);
 		super.setCharge(1);
 		super.setMz( mass );

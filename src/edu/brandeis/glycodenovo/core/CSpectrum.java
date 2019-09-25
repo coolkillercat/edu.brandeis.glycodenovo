@@ -193,8 +193,8 @@ public class CSpectrum {
 	}
 
 	public void mergePeaks(double threshold) {
-		// This function is to merge all Closest Peaks using single-linkage clustering on mPeaks
-		// Using a third party lib: https://github.com/lbehnke/hierarchical-clustering-java.
+		// This function is to merge the closest peaks by single-linkage clustering on mPeaks
+		// Use a third party lib: https://github.com/lbehnke/hierarchical-clustering-java.
 		int peakListSize = mPeaks.size();
 		double[][] distances = new double[1][peakListSize * (peakListSize - 1) / 2];
 		int distIdx = 0;
@@ -214,31 +214,88 @@ public class CSpectrum {
 		// CLUSTERS...
 		List<Cluster> clusters = new PDistClusteringAlgorithm().performFlatClustering(distances, names,
 				new SingleLinkageStrategy(), threshold);
+		
+		
 		// assign mass and intensities and complements (if any) to merged peaks
 		// from clusters generated above
 		ArrayList<CPeak> clusteredPeaks = new ArrayList<CPeak>(clusters.size());
+		ArrayList<CPeak> oriPeaks = new ArrayList<CPeak>();
+		CPeak tempPeak, newPeak;
+		double delta = mPrecursorMZ * mMassAccuracyPPM / 1000000; // Use mPrecursorMZ for complementary peaks.
+		
 		for (Cluster cluster : clusters) {
 			List<String> leaves = cluster.getLeafNames();
-			double massIntenSum = 0, intensitySum = 0;
-			for (String leaf : leaves) {
-				int idx = Integer.valueOf(leaf);
-				intensitySum += mPeaks.get(idx).getIntensity();
-				massIntenSum += mPeaks.get(idx).getMass() * mPeaks.get(idx).getIntensity();
+
+			// Begin 2019/09/18. 
+			if ( leaves.size() == 1 ) {
+				int oriIdx = Integer.valueOf( leaves.get(0) );
+				newPeak = mPeaks.get( oriIdx );
 			}
-			int middleIdx = cluster.getLeafNames().size() / 2;
-			double newIntensity = intensitySum, newMass = massIntenSum / intensitySum;
-			int oriIdx = Integer.parseInt( leaves.get(middleIdx) );
-			CPeak newPeak = new CPeak(this, newMass, newIntensity, mPeaks.get(oriIdx).getRawMZ(),
-					mPeaks.get(oriIdx).getRawZ(), newMass * (1 + mMassAccuracyPPM / 1000000),
-					newMass * (1 - mMassAccuracyPPM / 1000000));
-			if ( mPeaks.get(oriIdx).getOriginalPeak() != null )
-				newPeak.setOriginalPeak(mPeaks.get(oriIdx).getOriginalPeak());
-			else
-				newPeak.setOriginalPeak(mPeaks.get(oriIdx));
+			else {
+				double massIntenSum = 0, intensitySum = 0;
+				oriPeaks.clear();
+
+				for (String leaf : leaves) {
+					int idx = Integer.valueOf(leaf);
+					tempPeak = mPeaks.get(idx);
+					intensitySum += tempPeak.getIntensity();
+					massIntenSum += tempPeak.getMass() * tempPeak.getIntensity();
+					if ( !tempPeak.isComplement() )
+						oriPeaks.add( tempPeak );
+				}
+
+				double newIntensity = intensitySum;
+				double newMass = massIntenSum / intensitySum;
+				CPeak oriPeak = null;
+				double minD = Double.MAX_VALUE, d = 0;
+
+				for ( CPeak aPeak : oriPeaks ) {
+					d = Math.abs( aPeak.getMass() - newMass );
+					if ( d < minD ) {
+						oriPeak = aPeak;
+						minD = d;
+					}
+				}
+
+				if ( oriPeak == null ) {
+					int middleIdx = cluster.getLeafNames().size() / 2;
+					int idx = Integer.parseInt( leaves.get(middleIdx) );
+					oriPeak = mPeaks.get( idx );
+					newPeak = new CPeak( this, newMass, newIntensity, -1, -1, newMass + delta, newMass - delta );			
+				}
+				else
+					newPeak = new CPeak( this, newMass, newIntensity, oriPeak.getRawMZ(),
+							oriPeak.getRawZ(), newMass * (1 + mMassAccuracyPPM / 1000000),
+							newMass * (1 - mMassAccuracyPPM / 1000000) );
+
+				if ( oriPeak.getOriginalPeak() != null )
+					newPeak.setOriginalPeak( oriPeak.getOriginalPeak() );
+				else
+					newPeak.setOriginalPeak( oriPeak );
+			}
+			// End 2019/09/18
+			
 			clusteredPeaks.add( newPeak );
 		}
 		
-		// make a judgement to filter the Peaks
+		// Redirect complementary peaks
+		double minD = Double.MAX_VALUE, d = 0, dThresh = mPrecursorMZ * mMassAccuracyPPM / 1000000;
+		CPeak comPeak = null;
+		for (CPeak clusteredPeak : clusteredPeaks) {
+			comPeak = null;
+			for (CPeak peak : clusteredPeaks) {
+				if ( clusteredPeak == peak ) continue;
+				d = Math.abs(peak.getMass() - clusteredPeak.getMass());
+				if (d < dThresh && d < minD) {
+					minD = d;
+					comPeak = peak;
+				}
+			}
+			if ( comPeak != null )
+				clusteredPeak.setComplementPeak( comPeak );
+		}
+		
+		/* 2019/09/18 Replaced by the above block.
 		for (CPeak clusteredPeak : clusteredPeaks) {
 			// redirect mComplement
 			boolean complementFlag = false;
@@ -256,6 +313,8 @@ public class CSpectrum {
 					clusteredPeak.setComplementPeak(complement);
 			}
 		}
+		*/
+		
 		Collections.sort(clusteredPeaks);
 		mPeaks = clusteredPeaks;
 	}
@@ -307,6 +366,7 @@ public class CSpectrum {
 				added = true;
 				complements.add(new CPeak(cPeak.getSpectrum(), complementMass, cPeak.getIntensity(), cPeak,
 						complementMass + delta, complementMass - delta));
+				cPeak.setComplementPeak(complement);
 			} else { // in the list, update the complement peaks of both
 				complement.setComplementPeak(cPeak);
 				cPeak.setComplementPeak(complement);

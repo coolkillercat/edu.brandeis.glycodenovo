@@ -3,6 +3,7 @@ package edu.brandeis.glycodenovo.core;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 
 // Copyright [2018] [Pengyu Hong at Brandeis University]
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -117,5 +118,16 @@ public class CTopology implements Comparable<CTopology> {
 			return result;
 		}
 		return temp;	
+	}
+	
+	public void sortSupportPeaks() {
+		Collections.sort(mSupportPeaks, new Comparator<CPeak>() {
+			@Override
+			public int compare(CPeak c1, CPeak c2) {
+				ArrayList<CPeak> peaklist = c1.mSpectrum.getPeakList();
+				return peaklist.indexOf(c1) - peaklist.indexOf(c2);
+			}
+			
+		});
 	}
 }
