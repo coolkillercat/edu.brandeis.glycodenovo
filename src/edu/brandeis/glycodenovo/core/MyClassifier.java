@@ -9,13 +9,16 @@ import java.util.Scanner;
 
 import weka.classifiers.Classifier;
 
+/**
+ * This class loads and stores a random forest model saved from MATLAB.
+ */
 public class MyClassifier {
 	ArrayList<Double> trainedWeights;
 	ArrayList<ClassificationTree> cForest;
+	
 	class ClassificationTree {
 		int numNodes;
 		ArrayList<CNode> cTree;
-		
 		ClassificationTree (int num) {
 			numNodes = num;
 			cTree = new ArrayList<>();
@@ -31,6 +34,7 @@ public class MyClassifier {
 		int rootCutVar() {
 			return cTree.get(0).cutvar;
 		}
+		
 		CNode getNode (int nodeID) {
 			return cTree.get(nodeID);
 		}

@@ -3,6 +3,10 @@ package edu.brandeis.glycodenovo.core;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+/**
+ * This class stores the data of available peaks and provides easy access to map iontype to peak.
+ *
+ */
 class DataSignals {
         private class DataUnit {
             double mass, intensity, glycanMass;

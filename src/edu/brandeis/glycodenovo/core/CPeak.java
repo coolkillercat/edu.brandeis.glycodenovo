@@ -43,6 +43,7 @@ public class CPeak extends Peak {
 	private ArrayList<String> 				mInferredGWAFormulas;
 	private ArrayList<Double> 				mInferredMasses;
 	private ArrayList<Integer> 				mInferredScores;
+	private ArrayList<Double>				mInferredDoubleScores;
 
 	// This constructor doesn't fully construct CPeak. Have to set mSpectrum and mOriginal/mComplementPeak later.
 	// @TODO: finish this if want to reconstruct
@@ -238,6 +239,14 @@ public class CPeak extends Peak {
 			mInferredMasses.clear();
 		if (mInferredScores != null )
 			mInferredScores.clear();
+	}
+	
+	public void setInferredDoubleScores(ArrayList<Double> x) {
+		mInferredDoubleScores = x;
+	}
+	
+	public ArrayList<Double> getInferredDoubleScores() {
+		return mInferredDoubleScores;
 	}
 
 	@Override
