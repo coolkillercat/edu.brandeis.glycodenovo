@@ -1,9 +1,9 @@
 package edu.brandeis.glycodenovo.core;
 
-import weka.core.Instance;
-import weka.core.Instances;
-import weka.core.converters.ArffLoader;
-import weka.classifiers.Classifier;
+//import weka.core.Instance;
+//import weka.core.Instances;
+//import weka.core.converters.ArffLoader;
+//import weka.classifiers.Classifier;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
@@ -36,10 +36,41 @@ public class CIonclassifier {
     public static final String mMassfeaturesPath = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff"; //the path you store mass features
     
     //save the score for each classifier
-    public static final boolean saveRandomForestScore = false; 
+    public static boolean saveRandomForestScore = false; 
     public static final String randomForestScorePath = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save\\CTreescore.txt";
-    public static final boolean saveIonScoreMap = true;
+    public static boolean saveIonScoreMap = false;
     public static final String ionScoreMapPath = "C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff\\save";
+    
+    public CIonclassifier(String workpath) {
+    	mMassFeatures = new ArrayList<>();
+    	mMyClassifier = new HashMap<>();
+    	mMassBound = new ArrayList<>();
+    	saveRandomForestScore = false;
+    	saveIonScoreMap = false;
+    	try {
+    		DefaultClassifier.generateDefaultClassifier(workpath);
+    		this.setMyClassifier(workpath);
+    		this.setMassFeatures(workpath);
+    	} catch (Exception e) {
+    		System.out.println("Model file missing");
+    	}
+    }
+    
+    public CIonclassifier(String classifierPath, String massFeaturePath) throws Exception {
+    	mMassFeatures = new ArrayList<>();
+    	mMyClassifier = new HashMap<>();
+    	mMassBound = new ArrayList<>();
+    	this.setMyClassifier(classifierPath);
+    	this.setMassFeatures(massFeaturePath);
+    }
+    
+    public CIonclassifier() {
+    	mMassFeatures = new ArrayList<>();
+    	mMyClassifier = new HashMap<>();
+    	mMassBound = new ArrayList<>();
+    	saveRandomForestScore = false;
+    	saveIonScoreMap = false;
+    }
 
     /**
      * This method takes the reconstructed CPeaks and transfers them to DataVectors which can be easily classified. 
@@ -91,8 +122,12 @@ public class CIonclassifier {
 					if (useOriginalPeak && peaklist.get(p).getComplementPeak() == null) {
 						peakAvailable.set(p, false);
 						//@TODO: haven't tested this
-						int index = peaklist.indexOf(peaklist.get(p).getOriginalPeak());
-						peakAvailable.set(index, true);
+						// Hong: 2019/10/25 - Begin. Check with Xinyi
+						for (CPeak oriPeak : peaklist.get(p).getOriginalPeaks() ) {
+							int index = peaklist.indexOf(oriPeak);
+							peakAvailable.set(index, true);
+						}
+						// Hong: 2019/10/25 - End
 					}
 				}
 			}
@@ -154,13 +189,13 @@ public class CIonclassifier {
 			}
 		}
 		//save data vectors
-		System.out.println("Converting into feature vectors ...");
+		//System.out.println("Converting into feature vectors ...");
 		DataVectors testVectors = new DataVectors();
 		int numFeatures = massFeatures.size();
-		System.out.println("numFeatures: "+numFeatures);
+		//System.out.println("numFeatures: "+numFeatures);
 		for (char iontype : "BC".toCharArray()) {
 			int num = dataSignals.get(iontype).size();
-			System.out.println(iontype + ": " + num);
+			//System.out.println(iontype + ": " + num);
 			testVectors.setDataVectors(iontype, num, numFeatures);
 			for (int k = 0; k < num; k++) {
 				ArrayList<Double> dataVector = testVectors.getVector(iontype, k);
@@ -196,7 +231,7 @@ public class CIonclassifier {
 		/*for (double value : testVectors.getVector('B', 0)) {
 			System.out.println(value);
 		}*/
-        System.out.println("CIonClassifier.extract_data() Done");
+        //System.out.println("CIonClassifier.extract_data() Done");
         return ans;
 	}
 
@@ -362,12 +397,12 @@ public class CIonclassifier {
 			}
 			filewriter.close();
 		}
-		System.out.println("predict_ions done");
+		//System.out.println("predict_ions done");
 		return ionScoreMap;
 	}
 
 	/**
-	 * This method takes the reconstructed spectrum data and returns a (S¡ÁT¡ÁM¡Á4) double ArrayList ICScores[s][t][m][x]
+	 * This method takes the reconstructed spectrum data and returns a (Sï¿½ï¿½Tï¿½ï¿½Mï¿½ï¿½4) double ArrayList ICScores[s][t][m][x]
 	 * S - num of spectrum, T - num of topology, M - num of supportpeaks given spectrum s and topology t
 	 * Given spectrum ID s, topology ID t and supportPeak id m, the last dimension saves the following information:
 	 * x = 0 - the peakID of the m-th supportPeak
@@ -389,70 +424,80 @@ public class CIonclassifier {
 		// spectrum loop
 		for (int s = 0; s < spectra.size(); s++) {
 			ArrayList<CPeak> peaklist = (ArrayList<CPeak>) spectra.get(s).getPeakList();
-			if (peaklist.get(peaklist.size() - 1).getInferredSuperSets().isEmpty()) {
-				continue;
-			}
-			for (CTopologySuperSet TSS : peaklist.get(peaklist.size() - 1).getInferredSuperSets()) {
-				// topology loop
-				for (int t = 0; t < TSS.mTopologies.size(); t++) {
-					CTopology tp = TSS.mTopologies.get(t);
-					tp.sortSupportPeaks();
-					int len = tp.mSupportPeaks.size();
-					double[] weights = new double[len - 1];
-					int m = -1;
-					// support peaks loop
-					for (CPeak peak : tp.getSupportPeaks()) {
-						m++;
-						if (m == tp.getSupportPeaks().size() - 1) {
-							break;
-						}
-						double peakID = peaklist.indexOf(peak);
-						double type = 0;
-						for (CTopologySuperSet peakTSS : peak.getInferredSuperSets()) {		
-							if (peakTSS.mTopologies.isEmpty()) {
-								continue;
-							}
-							type = peakTSS.mTargetPeaks.get((int)peakID);
-							int key = s * 10000 + (int)peakID;
-							if (type == 1 || type == -1) {
-								weights[m] = ionScoreMap.getScore('B', key);
-								ArrayList<Integer> score = new ArrayList<>();
-								ArrayList<Double> doubleScore = new ArrayList<>();
-								score.add(0); score.add(0); 
-								doubleScore.add(0.0);doubleScore.add(0.0);
-								score.set(0, (int)weights[m]);
-								doubleScore.set(0, weights[m]);
-								peak.setInferredScores(score);
-								peak.setInferredDoubleScores(doubleScore);
-								
-							} else if (type == 2 || type == -2) {
-								weights[m] = ionScoreMap.getScore('C', key);
-								ArrayList<Integer> score = new ArrayList<>();
-								ArrayList<Double> doubleScore = new ArrayList<>();
-								score.add(0); score.add(0); 
-								doubleScore.add(0.0);doubleScore.add(0.0);
-								score.set(1, (int)weights[m]);
-								doubleScore.set(1, weights[m]);
-								peak.setInferredScores(score);
-								peak.setInferredDoubleScores(doubleScore);
-							}
-						}
-					}
-					double sum = 0;
-					for (double i : weights) {
-						sum += i;
-					}
-					tp.mScore = sum;
+			// peak loop
+			for (CPeak currpeak : peaklist) {
+				if (currpeak.getInferredSuperSets() == null || currpeak.getInferredSuperSets().isEmpty()) {
+					continue;
 				}
-				Collections.sort(TSS.mTopologies, new Comparator<CTopology>() {
-					   @Override
-					   public int compare(CTopology t1, CTopology t2) {
-						   double dscore = t1.mScore - t2.mScore;
-						   return (int) -Math.signum(dscore);
-					   }
-				   });
-			}
-		}
+				for (CTopologySuperSet TSS : currpeak.getInferredSuperSets()) {
+					// topology loop
+					for (int t = 0; t < TSS.mTopologies.size(); t++) {
+						CTopology tp = TSS.mTopologies.get(t);
+						tp.sortSupportPeaks();
+						int len = tp.mSupportPeaks.size();
+						double[] weights = new double[len - 1];
+						int m = -1;
+						// support peaks loop
+						for (CPeak peak : tp.getSupportPeaks()) {
+							m++;
+							if (m == tp.getSupportPeaks().size() - 1) {
+								break;
+							}
+							double peakID = peaklist.indexOf(peak);
+							double type = 0;
+							for (CTopologySuperSet peakTSS : peak.getInferredSuperSets()) {		
+								if (peakTSS.mTopologies.isEmpty()) {
+									continue;
+								}
+								type = peakTSS.mTargetPeaks.get((int)peakID);
+								int key = s * 10000 + (int)peakID;
+								if (type == 1 || type == -1) {
+									weights[m] = ionScoreMap.getScore('B', key);
+									ArrayList<Integer> score = new ArrayList<>();
+									ArrayList<Double> doubleScore = new ArrayList<>();
+									score.add(0); score.add(0); 
+									doubleScore.add(0.0);doubleScore.add(0.0);
+									score.set(0, (int)weights[m]);
+									doubleScore.set(0, weights[m]);
+									peak.setInferredScores(score);
+									peak.setInferredDoubleScores(doubleScore);
+									
+								} else if (type == 2 || type == -2) {
+									weights[m] = ionScoreMap.getScore('C', key);
+									ArrayList<Integer> score = new ArrayList<>();
+									ArrayList<Double> doubleScore = new ArrayList<>();
+									score.add(0); score.add(0); 
+									doubleScore.add(0.0);doubleScore.add(0.0);
+									score.set(1, (int)weights[m]);
+									doubleScore.set(1, weights[m]);
+									peak.setInferredScores(score);
+									peak.setInferredDoubleScores(doubleScore);
+								}
+							}
+						}
+						double sum = 0;
+						for (double i : weights) {
+							sum += i;
+						}
+						tp.mScore = sum;
+					} // topology loop
+					Collections.sort(TSS.mTopologies, new Comparator<CTopology>() {
+						@Override
+						public int compare(CTopology t1, CTopology t2) {
+							double dscore = t1.mScore - t2.mScore;
+							return (int) -Math.signum(dscore);
+						}
+					});
+				} // TSS loop
+				Collections.sort(currpeak.getInferredTopologies(), new Comparator<CTopology>() {
+					@Override
+					public int compare(CTopology t1, CTopology t2) {
+						double dscore = t1.mScore - t2.mScore;
+						return (int) -Math.signum(dscore);
+					}
+				});
+			} // peak loop
+		} // spectrum loop
 		
 		// spectrum loop
 		for (int s = 0; s < spectra.size(); s++) {
@@ -461,12 +506,14 @@ public class CIonclassifier {
 			if (peaklist.get(peaklist.size() - 1).getInferredSuperSets().isEmpty()) {
 				continue;
 			}
+			// TSS loop
 			for (CTopologySuperSet TSS : peaklist.get(peaklist.size() - 1).getInferredSuperSets()) {
-		
+				// topology loop
 				for (int t = 0; t < TSS.mTopologies.size(); t++) {
 					ArrayList<ArrayList<Double>> aalist = new ArrayList<>();
 					CTopology tp = TSS.mTopologies.get(t);
 					int m = -1;
+					// support peak loop
 					for (CPeak peak : tp.getSupportPeaks()) {
 						ArrayList<Double> alist = new ArrayList<>();
 						m++;
@@ -493,15 +540,15 @@ public class CIonclassifier {
 							aalist.add(alist);
 						}
 						
-					}
+					} // support peak loop
 					aaalist.add(aalist);
 					
-				}
+				} // topology loop
 				
-			}
+			} // TSS loop
 			aaaalist.add(aaalist);
 		}
-		System.out.println("rank_candidates done");
+		//System.out.println("rank_candidates done");
 		//vectors.output("C:\\Users\\nxy\\Desktop\\Brandeis\\arff\\arff");
 		return aaaalist;
 	}
@@ -663,7 +710,7 @@ public class CIonclassifier {
 			//System.out.println("\nLoading " + pos + "_v_" + neg);
 			mMyClassifier.put(pos + "_v_" + neg, new MyClassifier(rootpath, pos, neg));
 		}
-		System.out.println("Loaded Classifier");
+		//System.out.println("Loaded Classifier");
 	}
 	
 	public static void setMassFeatures (String filename) throws Exception {
@@ -743,11 +790,9 @@ public class CIonclassifier {
 	 * A demo about using CIonclassifier
 	 */
 	public static void main(String[] args) throws Exception {
-		
 	   // load classifier and massfeatures
+	   CIonclassifier c = new CIonclassifier(mClassifierPath, mMassfeaturesPath);
 	   //setClassifier(mClassifierPath);
-	   setMyClassifier(mClassifierPath);
-	   setMassFeatures(mMassfeaturesPath);
 	   
 	   // load spectrum data
 	   CSpectrum spec;
@@ -803,7 +848,7 @@ public class CIonclassifier {
 	   speca.add(spec);
 	   */
 	   // reconstruct spectrum
-	   CIonclassifier c = new CIonclassifier();
+
 	   CGlycoDeNovo glyco = new CGlycoDeNovo(massAccuracyPPM);
 	   //long starTime=System.currentTimeMillis();
 	   reconstructSpectrum(speca, glyco);
@@ -837,7 +882,7 @@ public class CIonclassifier {
 		   }
 	   }	
 	   */
-	  System.out.println("Done");
+	  //System.out.println("Done");
 	  }	 
 	
 }

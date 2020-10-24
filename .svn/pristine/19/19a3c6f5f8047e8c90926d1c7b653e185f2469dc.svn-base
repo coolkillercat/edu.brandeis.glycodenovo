@@ -1,0 +1,202 @@
+package edu.brandeis.glycodenovo.core;
+
+import java.util.TreeMap;
+import java.util.TreeSet;
+
+public class CComposition2Topology {
+	public int mMaxNumberBranches = 2;
+	TreeMap<Integer, CTopologySuperSet> mMap_Composition2TopologySuperSet;
+    TreeMap<Integer, TreeSet<Integer>> mMap_BisectCompositions;
+    CMonosaccharide[] mMonosaccharides;
+    CGlycoDeNovo glycoDeNovo;
+    int mPromptIdx = 0;
+    
+    public CComposition2Topology() {
+    	this.mMaxNumberBranches = 2;
+    	
+        this.mMap_Composition2TopologySuperSet = new TreeMap<>();
+        
+        this.mMap_BisectCompositions = new TreeMap<>();
+        
+        this.mMonosaccharides = new CMonosaccharide[CMonosaccharideSet.cNumberMonosaccharideClasses];
+        
+        this.glycoDeNovo = new CGlycoDeNovo(5);
+        
+        for (int i = 0; i < CMonosaccharideSet.cNumberMonosaccharideClasses; i++) {
+        	this.mMonosaccharides[i] = new CMonosaccharide(CMonosaccharideSet.cMonoClasses[i], true);
+        }
+    }
+    
+    public CTopologySuperSet create(int[] composition) {
+    	CTopologySuperSet topoSuperSet = new CTopologySuperSet();
+    	int sum = 0;
+    	for (int i = 0; i < composition.length; i++) {
+    		sum += composition[i];
+    	}
+    	if (composition == null || sum == 0) return null;
+    	int compositionKey = composition2key(composition);
+    	if (this.mMap_Composition2TopologySuperSet.containsKey(compositionKey)) {
+    		topoSuperSet = this.mMap_Composition2TopologySuperSet.get(compositionKey);
+    		//System.out.println();
+    		//topoSuperSet.printtopology();
+    		return topoSuperSet;
+    	}
+    	this.mPromptIdx = 0;
+    	for (int root = 0; root < CMonosaccharideSet.cNumberMonosaccharideClasses; root++) {
+    		if (composition[root] == 0) continue;
+    		int[] newComposition = composition.clone();
+    		newComposition[root] = composition[root] - 1;
+    		int newKey = composition2key(newComposition);
+    		if (newKey == 0) {
+    			CTopologySet newTS = new CTopologySet();
+    			newTS.mRootMono = this.mMonosaccharides[root];
+    			newTS.mRootMonoClassID = root;
+    			//System.out.println();
+    			//newTS.printtopology();
+    			topoSuperSet.mTopologySets.add(newTS);
+    			break;
+    		} else {
+    			CTopologySuperSet newTSS = create_rooted(newComposition, root);
+    			if (!newTSS.mTopologySets.isEmpty()) {
+        			//System.out.println();
+        			//newTSS.printtopology();
+    				topoSuperSet.mTopologySets.addAll(newTSS.mTopologySets);
+    			}
+    		}
+    	}
+    	if (!topoSuperSet.mTopologySets.isEmpty()) {
+    		this.mMap_Composition2TopologySuperSet.put(compositionKey, topoSuperSet);
+    	}
+    	return topoSuperSet;
+    }
+    
+    private CTopologySuperSet create_rooted(int[] composition, int rootMonoClassID) {
+    	CTopologySuperSet topoSuperSet = new CTopologySuperSet();
+    	int sum = 0;
+    	for (int i = 0; i < composition.length; i++) {
+    		sum += composition[i];
+    	}
+    	if (composition == null || sum == 0) return topoSuperSet;
+    	int[] composition1 = new int[CMonosaccharideSet.cNumberMonosaccharideClasses];
+    	for (int n1 = 0; n1 <= composition[0]; n1++) {
+    		composition1[0] = n1;
+    		for (int n2 = 0; n2 <= composition[1]; n2++) {
+        		composition1[1] = n2;
+        		for (int n3 = 0; n3 <= composition[2]; n3++) {
+            		composition1[2] = n3;
+            		for (int n4 = 0; n4 <= composition[3]; n4++) {
+                		composition1[3] = n4;
+                		for (int n5 = 0; n5 <= composition[4]; n5++) {
+                    		composition1[4] = n5;
+                    		for (int n6 = 0; n6 <= composition[5]; n6++) {
+                        		composition1[5] = n6;
+                        		for (int n7 = 0; n7 <= composition[6]; n7++) {
+                            		composition1[6] = n7;
+                            		for (int n8 = 0; n8 <= composition[7]; n8++) {
+                                		composition1[7] = n8;
+                                		if (n1 + n2 + n3 + n4 + n5 + n6 + n7 + n8 == 0) continue;
+                                		int[] composition2 = composition.clone();
+                                		for (int i = 0; i < composition.length; i++) {
+                                			composition2[i] = composition2[i] - composition1[i];
+                                		}
+                                		int compositionKey1 = composition2key(composition1);
+                                		int compositionKey2 = composition2key(composition2);
+                                		int compositionRootKey1 = compositionKey1 + (1+rootMonoClassID) * 100000000;
+                                        int compositionRootKey2 = compositionKey2 + (1+rootMonoClassID) * 100000000;
+                                        int key1, key2, rootKey1, rootKey2;
+                                        
+                                        if ( compositionKey1 <= compositionKey2 ) {
+                                            key1 = compositionKey1; 
+                                            key2 = compositionKey2;
+                                            rootKey1 = compositionRootKey1;
+                                            rootKey2 = compositionRootKey2;
+                                        } else {
+                                            key1 = compositionKey2; 
+                                            key2 = compositionKey1;
+                                            rootKey1 = compositionRootKey2;
+                                            rootKey2 = compositionRootKey1;
+                                        }
+                                        
+                                        if (this.mMap_BisectCompositions.containsKey(rootKey1)) {
+                                        	TreeSet<Integer> branch2key = this.mMap_BisectCompositions.get(rootKey1);
+                                        	if (branch2key.contains(rootKey2)) {
+                                        		continue;
+                                        	} else {
+                                        		branch2key.add(rootKey2);
+                                        	}
+                                        } else {
+                                        	TreeSet<Integer> set = new TreeSet<>();
+                                        	set.add(rootKey2);
+                                        	this.mMap_BisectCompositions.put(rootKey1, set);
+                                        }
+                                        CTopologySuperSet branchTSS1, branchTSS2;
+                                        if (this.mMap_Composition2TopologySuperSet.containsKey(compositionKey1)) {
+                                        	 branchTSS1 = this.mMap_Composition2TopologySuperSet.get(compositionKey1);
+                                        } else {
+                                        	 branchTSS1 = this.create(composition1);
+                                        }
+                                        
+                                        if (compositionKey2 != 0) {
+                                        	if (this.mMap_Composition2TopologySuperSet.containsKey(compositionKey2)) {
+                                            	 branchTSS2 = this.mMap_Composition2TopologySuperSet.get(compositionKey2);
+                                            } else {
+                                            	 branchTSS2 = this.create(composition2);
+                                            }
+                                        } else {
+                                        	 branchTSS2 = null;
+                                        }
+                                        
+                                        CTopologySet aTS = new CTopologySet();
+                                        aTS.mRootMono = this.mMonosaccharides[rootMonoClassID];
+                                        aTS.mRootMonoClassID = rootMonoClassID;
+                                        aTS.mBranches[0] = branchTSS1;
+                                        aTS.mBranches[1] = branchTSS2;
+                            			//System.out.println();
+                                        //aTS.printtopology();
+                                        topoSuperSet.mTopologySets.add(aTS);
+                                        this.mPromptIdx++;
+                                        if (this.mPromptIdx % 4000 == 0) {
+                                        	System.out.print('.');
+                                        	if (this.mPromptIdx % 60000 == 0) {
+                                        		System.out.println(this.mPromptIdx);
+                                        	}
+                                        }
+                                	}
+                            	}
+                        	}
+                    	}
+                	}
+            	}
+        	}
+    	}
+    	return topoSuperSet;
+    }
+    
+    private int composition2key(int[] composition) {
+    	int key = 0, p = 1;
+    	for (int i = 0; i < composition.length; i++) {
+    		key = key + composition[i] * p;
+    		p *= 10;
+    	}
+    	return key;
+    }
+    
+    public static void main(String[] args) {
+    	CComposition2Topology a = new CComposition2Topology();
+    	int[] composition = new int[]{1,1,1,1,0,0,0,0};
+    	long begintime = System.currentTimeMillis();
+    	CTopologySuperSet tss = a.create(composition);
+    	System.out.println();
+    	tss.printtopology();
+    	long endtime=System.currentTimeMillis();
+    	double costTime = ((double)(endtime - begintime))/1000;
+    	System.out.println(costTime);
+    	begintime = System.currentTimeMillis();
+    	//tss.reconstructFormulas();
+    	endtime=System.currentTimeMillis();
+    	costTime = ((double)(endtime - begintime))/1000;
+    	System.out.println(costTime);
+    }
+}
+
+

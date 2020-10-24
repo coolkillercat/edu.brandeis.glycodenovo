@@ -9,7 +9,7 @@
    <launcherArgs>
       <programArgs>-clearPersistedState
       </programArgs>
-      <vmArgs>-Xms2G -Xmx8G
+      <vmArgs>-Xms2G -Xmx6G
 -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true
       </vmArgs>
       <vmArgsMac>-XstartOnFirstThread -Dorg.eclipse.swt.internal.carbon.smallFonts
@@ -285,7 +285,6 @@
       <plugin id="org.w3c.dom.events"/>
       <plugin id="org.w3c.dom.smil"/>
       <plugin id="org.w3c.dom.svg"/>
-      <plugin id="uk.ac.imperial.glycosciences.glycanarray"/>
    </plugins>
 
 

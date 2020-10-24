@@ -1,34 +1,71 @@
-<<<<<<< .mine
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER">
-		<attributes>
-			<attribute name="module" value="true"/>
-		</attributes>
-	</classpathentry>
-	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="lib" path="C:/Users/nxy/Desktop/Brandeis/edu.brandeis.glycodenovo/edu.brandeis.glycodenovo/weka.jar"/>
-	<classpathentry kind="output" path="bin"/>
-</classpath>
-||||||| .r3587
-<?xml version="1.0" encoding="UTF-8"?>
-<classpath>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
-	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="output" path="bin"/>
-</classpath>
-=======
-<?xml version="1.0" encoding="UTF-8"?>
-<classpath>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER">
 		<attributes>
 			<attribute name="module" value="true"/>
 		</attributes>
 	</classpathentry>
+	<classpathentry combineaccessrules="false" kind="src" path="/edu.uga.cs.glycomics"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/javax"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.apache"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.apporiented"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.eclipse.nebula.widgets.nattable"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.eurocarbdb"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.glycoinfo"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.core"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.datamodel.ms"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.datamodel.ms.annotation"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.datamodel.ms.annotation.glycan"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.datamodel.ms.annotation.glycan.report"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.display.control.spectrum"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.display.control.table"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.editor.experimentdesigner"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.editor.samplemanager"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.archive"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.ms"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.ms.annotation"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.ms.annotation.glycan"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.ms.annotation.glycan.report"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.qrtpcr"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.entry.sample"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.fragment.developers"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.importer.ms"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.importer.ms.annotation.glycan.simiansearch"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.importer.ms.mycustom"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.io.ms.annotation"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.io.ms.annotation.glycan"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.io.ms.annotation.glycan.report"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.lab.servicelab"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.lib"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.tools.databasebot"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.tools.glycanbuilder"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.tools.gsl"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.tools.ms.profiler"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.tools.trap"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.util.structure.glycan"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.utils"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.view.glycantree"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.grits.toolbox.widgets"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.jdom"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.jfree"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.mihalis"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.simple.json"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.slf4j"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.swtchart"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/org.systemsbiology.jrap"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/uk.ac.imperial.glycosciences.glycanarray"/>
+	<classpathentry kind="lib" path="/javax/javax.activation-1.2.0.jar"/>
+	<classpathentry kind="lib" path="/javax/jaxb-api-2.3.0.jar"/>
+	<classpathentry kind="lib" path="/javax/jaxb-core-2.3.0.jar"/>
+	<classpathentry kind="lib" path="/javax/jaxb-impl-2.3.0.jar"/>
+	<classpathentry kind="lib" path="/javax/stax-api-1.0-2.jar"/>
+	<classpathentry kind="lib" path="E:/eclipseworkspace/edu.brandeis.glycodenovo/org.eclipse.jface.jar.zip"/>
+	<classpathentry kind="lib" path="E:/eclipseworkspace/edu.brandeis.glycodenovo/swt-4.12-win32-win32-x86_64.zip"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/5"/>
 	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
-	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="lib" path="C:/Users/nxy/Desktop/Brandeis/batik-bin-1.12.zip"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
->>>>>>> .r3632
